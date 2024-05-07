@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 from time import time
 import pickle
+import numpy as np
+import scipy.sparse as sp
+
 
 def export(obj, fp):
     pass
@@ -14,5 +17,114 @@ def timeit(func, args=None, msg=''):
 
 # other helper functions
 
+def degeneracy_spin_gamma(spin1, spin2):
+    """find the number of incdices where both spin1 and spin2 are up (=0)"""        
+    # check indices, where the arrays have ones
+    idx1 = np.where(spin1 == 0)[0]
+    idx2 = np.where(spin2 == 0)[0]
+    common_elements = np.intersect1d(idx1,idx2)
+    
+    return len(common_elements)
+
+def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
+    """Find simultaneous permutation of inner1 and inner2, such that all but one
+    spin index align, and in exactly the same positions. This is necessary
+    for calculating the Lindblad operator of sigma minus. Inefficient way """
+    from itertools import permutations
+    from numpy import array, concatenate, where, not_equal
+    Oc = outer1 + 2*outer2
+    Ic = inner1 + 2*inner2
+    
+    outer_num3 = len(where(Oc==3)[0])
+    inner_num3 = len(where(Ic==3)[0])
+    
+    if outer_num3 - inner_num3 == 1:
+        return outer_num3
+    else:
+        return 0
+
 # operators here?
 
+def qeye(N):
+
+    return sp.eye(N, N, dtype=complex, format='csr')
+
+def destroy(N):
+
+    return sp.spdiags(np.sqrt(range(0, N)),
+                           1, N, N, format='csr')
+
+def create(N):
+
+    qo = destroy(N)  # create operator using destroy function
+    qo = qo.T.tocsr()  # transpose data in Qobj and convert to csr
+    return qo
+
+def sigmap():
+    return sp.spdiags(np.array([0.0,1.0]),
+                      1, 2, 2, format='csr')
+                      
+def sigmam():
+    return sigmap().T.tocsr()
+
+def sigmaz():
+    return sp.spdiags(np.array([1.0,-1.0]),
+                      0, 2, 2, format='csr')
+def sigmax():
+    return sigmap() + sigmam()
+
+def sigmay():
+    return -1j*sigmap() + 1j*sigmam()
+    
+def tensor(*args):
+
+    if not args:
+        raise TypeError("Requires at least one input argument")
+
+    if len(args) == 1 and isinstance(args[0], (list, np.ndarray)):
+        # this is the case when tensor is called on the form:
+        # tensor([q1, q2, q3, ...])
+        qlist = args[0]
+
+    # elif len(args) == 1 and isinstance(args[0], Qobj):
+    #     # tensor is called with a single input, do nothing
+    #     return args[0]
+
+    else:
+        # this is the case when tensor is called on the form:
+        # tensor(q1, q2, q3, ...)
+        qlist = args
+
+    out = []
+
+    for n, q in enumerate(qlist):
+        if n == 0:
+            out = q
+        else:
+            out = sp.kron(out, q, format='csr')
+
+    return out
+    
+def basis(N, n=0):
+    """Create Fock density matrix for N-level Hilbert space
+    with excitation in level n""" 
+    
+    if (not isinstance(N, (int, np.integer))) or N < 0:
+        raise ValueError("N must be integer N >= 0")
+
+    if (not isinstance(n, (int, np.integer))):
+        raise ValueError("n must be integer n >= 0")
+
+    if n > (N - 1):  # check if n is within bounds
+        raise ValueError("basis vector index need to be in n <= N-1")
+
+    bas = sp.lil_matrix((N, 1))  # column vector of zeros
+    bas[n, 0] = 1  # 1 located at position n
+    bas = bas.tocsr()
+
+    return tensor(bas, bas.T)
+    
+def expect(oper, state):
+
+    # calculates expectation value via TR(op*rho)
+    return (oper.dot(state).toarray()).trace()
