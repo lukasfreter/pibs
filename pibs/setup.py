@@ -307,14 +307,14 @@ class BlockL:
         # if not, calculate them
         print('Calculating L...')
         t0 = time()
-        self.setup_L_block(indices)
+        self.setup_L_block(indices,H)
         elapsed = time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
    
     
    
     
-    def setup_L_block(self, indices):
+    def setup_L_block(self, indices,H):
        """ Calculate Liouvillian in block form"""
        num_blocks = len(indices.mapping_block)
        
@@ -342,11 +342,20 @@ class BlockL:
                    left_to_couple = element_to_couple[0:indices.nspins+1]
                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
                    
+                   # elements which differ in photon number by 2 will never couple:
+                   if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
+                       continue
+                   
+                   
                    #-----------------------------
                    # get Liouvillian elements
                    #-----------------------------
                   
                    # L0 part from Hamiltonian
+                   if (right_to_couple == right).all() and (left_to_couple == left).all():
+                       sum_right = sum(right[1:])
+                       sum_left = sum(left[1:])
+                       L0_H_nu[count_in, count_out] = -1j * H.wc*(left[0]-right[0]) -1j*H.w0/2*(-2*sum_left+2*sum_right)
                                        
                    
                    # L0 part from L[sigmam] -> -sigmap*sigmam*rho - rho*sigmap*sigmam
@@ -369,6 +378,7 @@ class BlockL:
            self.L0_sigmam.append(sp.csr_matrix(L0_sigmam_nu))
            self.L0_sigmaz.append(sp.csr_matrix(L0_sigmaz_nu))
            self.L0_a.append(sp.csr_matrix(L0_a_nu))
+           self.L0_H.append(sp.csr_matrix(L0_H_nu))
                    
        
        # Now get L1 part -> coupling from nu_element to nu_element+1
@@ -393,6 +403,10 @@ class BlockL:
                    element_to_couple = indices.elements_block[nu_element+1][count_out]
                    left_to_couple = element_to_couple[0:indices.nspins+1]
                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
+                   
+                   # elements which differ in photon number by 2 will never couple:
+                   if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
+                       continue
                    
                    #---------------------------------
                    # get Liouvillian elements
