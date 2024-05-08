@@ -248,6 +248,7 @@ class Indices:
     def export(self, filepath):
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
+        print(f'Storing Indices for later use in {filepath}')
 
 
     def load(self, filepath):
@@ -305,23 +306,52 @@ class BlockL:
         self.L0_H_w0 =[]
         self.L0_H_g = []
         
-        self.L0 = []
-        self.L1 = []
+
+        # check if an object with the same arguments already exists in data/liouvillian/ folder
+        liouv_path = 'data/liouvillians/'
+        liouv_files = os.listdir(liouv_path)
+        filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
+        if (any([f == filename for f in liouv_files])):
+            self.load(liouv_path+filename, indices)
+        else:
+            # if not, calculate them
+            print('Calculating normalized L...')
+            t0 = time()
+            self.setup_L_block(indices,H)
+            elapsed = time()-t0
+            print(f'Complete {elapsed:.0f}s', flush=True)
+            # export normalized Liouvillians for later use
+            self.export(liouv_path+filename)
         
-        # check if Liouvillians already exist in file
         
-        
-        # if not, calculate them
-        print('Calculating L...')
-        t0 = time()
-        self.setup_L_block(indices,H)
-        elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
         self.get_total_L(indices,H)
+        
+    
+    def export(self, filepath):
+        with open(filepath, 'wb') as handle:
+            pickle.dump(self, handle)
+        print(f'Storing Liouvillian for later use in {filepath}')
+            
+    def load(self, filepath,ind):
+        with open(filepath, 'rb') as handle:
+            L_load = pickle.load(handle)
+        self.L0_sigmaz = L_load.L0_sigmaz
+        self.L0_sigmam = L_load.L0_sigmam
+        self.L1_sigmam = L_load.L1_sigmam
+        self.L0_a = L_load.L0_a
+        self.L1_a = L_load.L1_a
+        self.L0_H_wc = L_load.L0_H_wc
+        self.L0_H_w0 = L_load.L0_H_w0
+        self.L0_H_g = L_load.L0_H_g
+        # at least tell user what they loaded
+        print(f'Loaded Liouvillian file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
     
     def get_total_L(self, indices, H):
         """ From the basic parts of the Liouvillian, get the whole Liouvillian
         by proper scaling."""
+        self.L0 = []
+        self.L1 = []
+        
         num_blocks = len(indices.mapping_block)
         for nu in range(num_blocks):
             L0_scale = (self.gamma_phi * self.L0_sigmaz[nu] + self.gamma*self.L0_sigmam[nu] +
@@ -353,7 +383,11 @@ class BlockL:
            L0_H_wc_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
            L0_H_w0_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
            L0_H_g_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-
+           
+           if nu_element < num_blocks-1:
+               next_blocksize = len(indices.mapping_block[nu_element+1])
+               L1_sigmam_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
+               L1_a_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
 
            
            # Loop through all elements in the same block
@@ -442,32 +476,14 @@ class BlockL:
                    # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
                    if (left_to_couple == left).all() and (right_to_couple == right).all():
                        L0_a_nu[count_in][count_out] = -1/2*(left[0] + right[0]) 
-           self.L0_sigmam.append(sp.csr_matrix(L0_sigmam_nu))
-           self.L0_sigmaz.append(sp.csr_matrix(L0_sigmaz_nu))
-           self.L0_a.append(sp.csr_matrix(L0_a_nu))
-           self.L0_H_wc.append(sp.csr_matrix(L0_H_wc_nu))
-           self.L0_H_w0.append(sp.csr_matrix(L0_H_w0_nu))
-           self.L0_H_g.append(sp.csr_matrix(L0_H_g_nu))
+
 
                    
-       
-       # Now get L1 part -> coupling from nu_element to nu_element+1
-       for nu_element in range(num_blocks):
-           if nu_element == num_blocks-1:
-               continue
-           current_blocksize = len(indices.mapping_block[nu_element])
-           next_blocksize = len(indices.mapping_block[nu_element+1])
-           L1_sigmam_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
-           L1_a_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
-
-           
-           for count_in in range(current_blocksize):
-               # get element, of which we want the time derivative
-               element = indices.elements_block[nu_element][count_in]
-               left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
-               right = element[indices.nspins+1:2*indices.nspins+2] # right state
-               
-               # now loop through all matrix elements in the next block we want to couple to
+               if nu_element == num_blocks -1:
+                   continue
+                
+               # Now get L1 part -> coupling from nu_element to nu_element+1
+               # loop through all matrix elements in the next block we want to couple to
                for count_out in range(next_blocksize):
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element+1][count_out]
@@ -498,8 +514,18 @@ class BlockL:
                    # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
                        L1_a_nu[count_in][count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
-           self.L1_sigmam.append(sp.csr_matrix(L1_sigmam_nu))
-           self.L1_a.append(sp.csr_matrix(L1_a_nu))
+           
+           
+           self.L0_sigmam.append(sp.csr_matrix(L0_sigmam_nu))
+           self.L0_sigmaz.append(sp.csr_matrix(L0_sigmaz_nu))
+           self.L0_a.append(sp.csr_matrix(L0_a_nu))
+           self.L0_H_wc.append(sp.csr_matrix(L0_H_wc_nu))
+           self.L0_H_w0.append(sp.csr_matrix(L0_H_w0_nu))
+           self.L0_H_g.append(sp.csr_matrix(L0_H_g_nu))
+           
+           if nu_element < num_blocks-1: 
+               self.L1_sigmam.append(sp.csr_matrix(L1_sigmam_nu))
+               self.L1_a.append(sp.csr_matrix(L1_a_nu))
 
         
     
@@ -784,11 +810,11 @@ if __name__ == '__main__':
     # Testing purposes
     
     # same parameters as in Peter Kirton's code.
-    ntls =10#number 2LS
+    ntls =20#number 2LS
     w0 = 1.0
     wc = 0.65
     Omega = 0.4
-    kappa = 0.01
+    kappa = 0.011
     gamma = 0.02
     gamma_phi = 0.03
     indi = Indices(ntls)
