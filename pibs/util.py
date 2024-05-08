@@ -3,6 +3,7 @@ from time import time
 import pickle
 import numpy as np
 import scipy.sparse as sp
+from math import factorial
 
 
 def export(obj, fp):
@@ -16,6 +17,64 @@ def timeit(func, args=None, msg=''):
     print(f'Complete {elapsed:.0f}s', flush=True)
 
 # other helper functions
+def degeneracy_outer_invariant_optimized(outer1, outer2, inner):
+    """ calculate how many distinct permutations there are of the spins (outer1, inner)
+    and (inner, outer2), which leave outer1 and outer2 invariant. Necessary
+    for commutator term in Liouvillian -i[H,rho]"""
+    xi = outer1+ 2*outer2
+    deg = 1
+    for i in range(4):
+        l = np.where(xi==i)[0]
+        # print('loop',i)
+        # print(l)
+        if len(l) == 0:
+            continue
+        
+        sub_inner = inner[l]
+        s = sum(sub_inner)
+        factor =  factorial(len(l)) / (factorial(s)*factorial(len(l)-s))
+        deg = deg * factor
+        
+    return int(deg)
+
+
+def states_compatible(state1, state2):
+    """ checks, if state1 and state2 are equivalent up to permutation of spins"""
+    if state1[0] != state2[0]:
+        return False
+    
+    from numpy import where, setdiff1d, intersect1d
+    
+    spins1 = state1[1:]
+    spins2 = state2[1:]
+    if(sum(state1) != sum(state2)):
+        return False
+    
+    return True
+
+def permute_compatible(comp1, comp2, permute):
+    """comp1 and comp2 contain compatible (=equal up to permutation) spin states.
+    Find the permutation, that transforms comp2 in comp1 and perform the same
+    transformation to permute. This is important to calculate the proper H-element
+    in calc_L_line_block1."""
+    
+    # check indices, where the arrays have ones
+    idx1 = np.where(comp1 == 1)[0]
+    idx2 = np.where(comp2 == 1)[0]
+    
+    # find common indices and remove them, because they are already in order
+    common_elements = np.intersect1d(idx1,idx2)
+    idx_ones1 = np.setdiff1d(idx1, common_elements)
+    idx_ones2 = np.setdiff1d(idx2, common_elements)
+    
+    cp_permute = np.copy(permute)
+    for i in range(len(idx_ones1)):
+        cp_permute[idx_ones2[i]] = permute[idx_ones1[i]]
+        cp_permute[idx_ones1[i]] = permute[idx_ones2[i]]
+        
+    return cp_permute
+
+
 
 def degeneracy_spin_gamma(spin1, spin2):
     """find the number of incdices where both spin1 and spin2 are up (=0)"""        
