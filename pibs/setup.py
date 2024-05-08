@@ -297,6 +297,7 @@ class BlockL:
         self.kappa = kappa
         self.gamma = gamma
         self.gamma_phi = gamma_phi
+        
         self.L0_sigmaz = []
         self.L0_sigmam = []
         self.L1_sigmam = []
