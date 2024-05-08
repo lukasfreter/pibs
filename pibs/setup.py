@@ -262,7 +262,32 @@ class Indices:
         # at least tell user what they loaded
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
 
+class BlockDicke(BlockL):
+    def __init__(self, kappa, gamma, gamma_phi, indices):
+        self.kappa = kappa
+        self.gamma = gamma
+        self.gamma_phi = gamma_phi
+        super().__init__()
 
+    def setup_L():
+        """ From the basic parts of the Liouvillian, get the whole Liouvillian
+        by proper scaling."""
+        self.L0 = []
+        self.L1 = []
+        
+        num_blocks = len(indices.mapping_block)
+        for nu in range(num_blocks):
+            L0_scale = (self.gamma_phi * self.L0_sigmaz[nu] + self.gamma*self.L0_sigmam[nu] +
+                        self.kappa*self.L0_a[nu] + H.wc * self.L0_H_wc[nu] + H.w0 * self.L0_H_w0[nu]
+                        + H.g * self.L0_H_g[nu])
+            self.L0.append(sp.csr_matrix(L0_scale))
+            
+            if nu < num_blocks -1:
+                L1_scale = (self.gamma * self.L1_sigmam[nu] + self.kappa * self.L1_a[nu])
+                self.L1.append(sp.csr_matrix(L1_scale))
+        
+#blockDicke = BlockDice(0.1, 0.2, 0.1, ind)
+#blockDicke.L0 
 
 class BlockL:
     """Liouvillian for a given system in Block form. As a requirement, the Master
@@ -297,6 +322,10 @@ class BlockL:
         self.kappa = kappa
         self.gamma = gamma
         self.gamma_phi = gamma_phi
+        self.L0_basis = {'sigmaz': [],
+                         'sigmam': [],
+                         'sigmam': []}
+
         self.L0_sigmaz = []
         self.L0_sigmam = []
         self.L1_sigmam = []
@@ -335,6 +364,8 @@ class BlockL:
     def load(self, filepath,ind):
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
+        self.L0_basis = L_load.L0_basis
+        self.L1_basis = L_load.L1_basis
         self.L0_sigmaz = L_load.L0_sigmaz
         self.L0_sigmam = L_load.L0_sigmam
         self.L1_sigmam = L_load.L1_sigmam
@@ -363,9 +394,8 @@ class BlockL:
                 L1_scale = (self.gamma * self.L1_sigmam[nu] + self.kappa * self.L1_a[nu])
                 self.L1.append(sp.csr_matrix(L1_scale))
         
- 
     
-    def setup_L_block(self, indices,H):
+    def setup_L_block_basis(self, indices,H):
        """ Calculate Liouvillian in block form"""
        num_blocks = len(indices.mapping_block)
        
@@ -515,7 +545,9 @@ class BlockL:
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
                        L1_a_nu[count_in][count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
            
-           
+           for name in self.L0_basis:
+               self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
+
            self.L0_sigmam.append(sp.csr_matrix(L0_sigmam_nu))
            self.L0_sigmaz.append(sp.csr_matrix(L0_sigmaz_nu))
            self.L0_a.append(sp.csr_matrix(L0_a_nu))
