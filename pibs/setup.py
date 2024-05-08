@@ -323,7 +323,7 @@ class BlockL:
             # export normalized Liouvillians for later use
             self.export(liouv_path+filename)
         
-        
+        # calculate total Liouvillians with proper scaling
         self.get_total_L(indices,H)
         
     
@@ -788,6 +788,7 @@ class DickeH:
     H = wc*adag*a + w0*sz  + g*(a*sp + adag*sm) 
     c_ops = kappa L[a] + gamma_phi L[sigmaz] + gamma L[sigmam]"""
     
+    # get rid of this class?
     def __init__(self, w0, wc, Omega, indices):
         self.w0 = w0
         self.wc = wc
