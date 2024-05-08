@@ -262,29 +262,7 @@ class Indices:
         # at least tell user what they loaded
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
 
-class BlockDicke(BlockL):
-    def __init__(self, kappa, gamma, gamma_phi, indices):
-        self.kappa = kappa
-        self.gamma = gamma
-        self.gamma_phi = gamma_phi
-        super().__init__()
 
-    def setup_L():
-        """ From the basic parts of the Liouvillian, get the whole Liouvillian
-        by proper scaling."""
-        self.L0 = []
-        self.L1 = []
-        
-        num_blocks = len(indices.mapping_block)
-        for nu in range(num_blocks):
-            L0_scale = (self.gamma_phi * self.L0_sigmaz[nu] + self.gamma*self.L0_sigmam[nu] +
-                        self.kappa*self.L0_a[nu] + H.wc * self.L0_H_wc[nu] + H.w0 * self.L0_H_w0[nu]
-                        + H.g * self.L0_H_g[nu])
-            self.L0.append(sp.csr_matrix(L0_scale))
-            
-            if nu < num_blocks -1:
-                L1_scale = (self.gamma * self.L1_sigmam[nu] + self.kappa * self.L1_a[nu])
-                self.L1.append(sp.csr_matrix(L1_scale))
         
 #blockDicke = BlockDice(0.1, 0.2, 0.1, ind)
 #blockDicke.L0 
@@ -310,21 +288,21 @@ class BlockL:
     Strategy: Calculate the Liouvillian for the collapse operators L[a],L[sigma_m],
     L[sigma_z] once for unit dissipation rates, and store them for later use.
     """
-    def __init__(self, kappa, gamma, gamma_phi, indices, H):
-        """
-        kappa: photon loss rate
-        gamma: exciton loss rate
-        gamma_phi: dephasing rate
-        indices: Object of Indices class
-        H: Object of a Hamiltonian class, for example DickeH"""
-        
+    def __init__(self, indices):
         # initialisation
         self.kappa = kappa
         self.gamma = gamma
         self.gamma_phi = gamma_phi
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
-                         'sigmam': []}
+                         'a': [],
+                         'H_n': [],
+                         'H_sigmaz': [],
+                         'H_g': []}
+        self.L1_basis = {'sigmam': [],
+                         'a': []}
+        
+        # get rid of these, only use dictionary
         self.L0_sigmaz = []
         self.L0_sigmam = []
         self.L1_sigmam = []
@@ -345,14 +323,12 @@ class BlockL:
             # if not, calculate them
             print('Calculating normalized L...')
             t0 = time()
-            self.setup_L_block(indices,H)
+            self.setup_L_block_basis(indices)
             elapsed = time()-t0
             print(f'Complete {elapsed:.0f}s', flush=True)
             # export normalized Liouvillians for later use
             self.export(liouv_path+filename)
         
-        # calculate total Liouvillians with proper scaling
-        self.get_total_L(indices,H)
         
     
     def export(self, filepath):
@@ -363,8 +339,11 @@ class BlockL:
     def load(self, filepath,ind):
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
+            
         self.L0_basis = L_load.L0_basis
         self.L1_basis = L_load.L1_basis
+        
+        # get rid of these, only use dictionary
         self.L0_sigmaz = L_load.L0_sigmaz
         self.L0_sigmam = L_load.L0_sigmam
         self.L1_sigmam = L_load.L1_sigmam
@@ -376,22 +355,6 @@ class BlockL:
         # at least tell user what they loaded
         print(f'Loaded Liouvillian file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
     
-    def get_total_L(self, indices, H):
-        """ From the basic parts of the Liouvillian, get the whole Liouvillian
-        by proper scaling."""
-        self.L0 = []
-        self.L1 = []
-        
-        num_blocks = len(indices.mapping_block)
-        for nu in range(num_blocks):
-            L0_scale = (self.gamma_phi * self.L0_sigmaz[nu] + self.gamma*self.L0_sigmam[nu] +
-                        self.kappa*self.L0_a[nu] + H.wc * self.L0_H_wc[nu] + H.w0 * self.L0_H_w0[nu]
-                        + H.g * self.L0_H_g[nu])
-            self.L0.append(sp.csr_matrix(L0_scale))
-            
-            if nu < num_blocks -1:
-                L1_scale = (self.gamma * self.L1_sigmam[nu] + self.kappa * self.L1_a[nu])
-                self.L1.append(sp.csr_matrix(L1_scale))
         
     
     def setup_L_block_basis(self, indices,H):
@@ -406,6 +369,9 @@ class BlockL:
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
+           
+           # rewrite in dictionary
+           L0_new ={}
            L0_sigmam_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
            L0_sigmaz_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
            L0_a_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
@@ -544,8 +510,10 @@ class BlockL:
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
                        L1_a_nu[count_in][count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
            
-           for name in self.L0_basis:
-               self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
+            
+           # rewrite in dictionary
+           # for name in self.L0_basis:
+           #     self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
 
            self.L0_sigmam.append(sp.csr_matrix(L0_sigmam_nu))
            self.L0_sigmaz.append(sp.csr_matrix(L0_sigmaz_nu))
@@ -811,31 +779,37 @@ class BlockL:
             
                        
                         
-                        
-
-        
-class DickeH:
-    """ Dicke Hamiltonian.
-    H = wc*adag*a + w0*sz  + g*(a*sp + adag*sm) 
-    c_ops = kappa L[a] + gamma_phi L[sigmaz] + gamma L[sigmam]"""
-    
-    # get rid of this class?
-    def __init__(self, w0, wc, Omega, indices):
+class BlockDicke(BlockL):
+    def __init__(self,w0,wc,g, kappa, gamma, gamma_phi, indices):
         self.w0 = w0
         self.wc = wc
-        self.g = Omega / np.sqrt(indices.nspins)
-        self.H = []
+        self.g = g
+        self.kappa = kappa
+        self.gamma = gamma
+        self.gamma_phi = gamma_phi
+        super().__init__()
         
-        # setup Hamiltonian
-    #     self.setup_Dicke(indices)
-         
+        self.setup_L(indices)
+
+    def setup_L(self, indices):
+        """ From the basic parts of the Liouvillian, get the whole Liouvillian
+        by proper scaling."""
+        self.L0 = []
+        self.L1 = []
         
-    # def setup_Dicke(self,indices):
-    #     """ Setup Hamiltonian"""
-    #     num = create(indices.ldim_p)*destroy(indices.ldim_p)
-    #     #note terms with just photon operators need to be divided by nspins
-    #     self.H = self.wc*tensor(num, qeye(indices.ldim_s))/indices.nspins + self.w0*tensor(qeye(indices.ldim_p), sigmaz()) 
-    #     self.H = self.H + self.g*(tensor(create(indices.ldim_p), sigmam()) +  tensor(destroy(indices.ldim_p), sigmap()))
+        # use dictionary notation
+        num_blocks = len(indices.mapping_block)
+        for nu in range(num_blocks):
+            L0_scale = (self.gamma_phi * self.L0_sigmaz[nu] + self.gamma*self.L0_sigmam[nu] +
+                        self.kappa*self.L0_a[nu] + self.wc * self.L0_H_wc[nu] + self.w0 * self.L0_H_w0[nu]
+                        + self.g * self.L0_H_g[nu])
+            self.L0.append(sp.csr_matrix(L0_scale))
+            
+            if nu < num_blocks -1:
+                L1_scale = (self.gamma * self.L1_sigmam[nu] + self.kappa * self.L1_a[nu])
+                self.L1.append(sp.csr_matrix(L1_scale))                     
+
+        
        
 
 if __name__ == '__main__':
@@ -846,12 +820,12 @@ if __name__ == '__main__':
     w0 = 1.0
     wc = 0.65
     Omega = 0.4
+    g = Omega / np.sqrt(ntls)
     kappa = 0.011
     gamma = 0.02
     gamma_phi = 0.03
     indi = Indices(ntls)
-    dicke = DickeH(w0, wc, Omega, indi)
-    L = BlockL(kappa, gamma, gamma_phi/4, indi, dicke)
+    L = BlockDicke(w0, wc,g, kappa, gamma, gamma_phi/4, indi)
 
 
 
