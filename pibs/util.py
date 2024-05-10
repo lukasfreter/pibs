@@ -187,3 +187,49 @@ def expect(oper, state):
 
     # calculates expectation value via TR(op*rho)
     return (oper.dot(state).toarray()).trace()
+
+def vector_to_operator(op):
+
+    n = int(np.sqrt(op.shape[0]))
+    q = sp_reshape(op.T, (n, n)).T
+    return q
+
+
+def sp_reshape(A, shape, format='csr'):
+
+    if not hasattr(shape, '__len__') or len(shape) != 2:
+        raise ValueError('Shape must be a list of two integers')
+
+    C = sp.coo_matrix(A)
+    nrows, ncols = C.shape
+    size = nrows * ncols
+    new_size = shape[0] * shape[1]
+
+    if new_size != size:
+        raise ValueError('Total size of new array must be unchanged.')
+
+    flat_indices = ncols * C.row + C.col
+    new_row, new_col = divmod(flat_indices, shape[1])
+    B = sp.coo_matrix((C.data, (new_row, new_col)), shape=shape)
+
+    if format == 'csr':
+        return B.tocsr()
+    elif format == 'coo':
+        return B
+    elif format == 'csc':
+        return B.tocsc()
+    elif format == 'lil':
+        return B.tolil()
+    else:
+        raise ValueError('Return format not valid.')
+
+def _multinominal(bins):
+    """calculate multinominal coeffcient"""
+    
+    from math import factorial
+    
+    n = sum(bins)
+    combinations  = factorial(n)
+    for count_bin in range(len(bins)):
+        combinations = combinations//factorial(bins[count_bin])
+    return combinations

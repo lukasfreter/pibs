@@ -2,13 +2,16 @@
 import numpy as np
 from itertools import product
 from multiprocessing import Pool
-from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam
+from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
 from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
 from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
+from util import _multinominal
 import os, sys, logging
 import pickle
 from time import time
 import scipy.sparse as sp
+from itertools import permutations
+
 
 class Indices:
     """Indices for and mappings between compressed and supercompressed 
@@ -265,7 +268,7 @@ class Indices:
 
 
 class BlockL:
-    """Liouvillian for a given system in Block form. As a requirement, the Master
+    """Calculate Liouvillian basis block form. As a requirement, the Master
     Equation for the system must have weak U(1) symmetry, such that density-matrix
     elements couple to density matrix elements that differ in the total number of
     excitations (photons + spin) by at most one. We label the total number of excitation
@@ -280,10 +283,15 @@ class BlockL:
     
     In this first version, we calculate the Liouvillian for the Dicke model with
     photon loss L[a], individual dephasing L[sigma_z] and individual exciton loss
-    L[sigma_m].
+    L[sigma_m], as well as a Hamiltonian of the form 
+    H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
+    This means we have 6 parameters, i.e. we need a basis of 6 elements. These
+    we can then later scale by the parameters and add up, to get the desired system
+    Liouvillian
     
-    Strategy: Calculate the Liouvillian for the collapse operators L[a],L[sigma_m],
-    L[sigma_z] once for unit dissipation rates, and store them for later use.
+    This is convenient, because we can calculate the basis for a given N, Nphot
+    once, and reuse them for all different values of the dissipation rates or energies
+    in the hamiltonian.
     """
     def __init__(self, indices):
         # initialisation
@@ -496,7 +504,16 @@ class BlockL:
                                  
                         
 class BlockDicke(BlockL):
+    """ Calculates the specific Liouvillian of the Tavis Cummings model. This class
+    inherits the Liouvillian basis from BlockL. With the specified parameters of the 
+    Hamiltonian and the collapse operators, one can calculate the Liouvillian.
+    
+    Model:
+        H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
+        d/dt rho = -i[H,rho] + kappa*L[a] + gamma*L[sigmam] + gamma_phi*L[sigmaz]"""
     def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices):
+        # specify rates according to what part of Hamiltonian or collapse operators
+        # they scale
         self.rates = {'H_n': wc,
                       'H_sigmaz': w0,
                       'H_g': g,
@@ -535,14 +552,219 @@ class BlockDicke(BlockL):
                     L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
                 self.L1.append( sp.csr_matrix(L1_scale))                     
 
+
+
+
+class Rho:
+    """ Functionality related to density matrix:
+        Initial state
+        Reduced density matrix
+        Calculation of expectation values
+    """
         
-       
+    def __init__(self, rho_p, rho_s, indices, nrs=1):
+        assert type(nrs) == int, "Argument 'nrs' must be int"
+        assert nrs >= 0, "Argument 'nrs' must be non-negative"
+        assert indices.nspins >= nrs, "Number of spins in reduced density matrix ({}) cannot "\
+                "exceed total number of spins ({})".format(nrs, indices.nspins)
+        
+        self.nrs = nrs # number of spins in reduced density matrix
+        self.indices = indices
+        self.convert_rho_block_dic = {}
+        
+        # setup initial state
+        self.initial = self.setup_initial(rho_p, rho_s)
+        
+        # setup reduced density matrix
+        self.setup_convert_rho_block_nrs()
+        
+        
+    
+    def setup_initial(self,rho_p, rho_s):
+        """Calculate the block representation of the initial state 
+        with photon in state rho_p and all spins in state rho_s"""
+        indices = self.indices
+        num_elements = len(indices.indices_elements)
+        blocks = len(indices.mapping_block)
+        
+        # Check for superfluoresence initial condition, i.e. zero photons and all spins up. 
+        # This is very easily initialized by all blocks zero, instead of the first entry of the last block
+        if np.isclose(rho_p[0,0],1) and np.isclose(rho_s[0,0],1):
+            rho_vec = [np.zeros(len(i)) for i in indices.mapping_block]
+            rho_vec[blocks-1][0] = 1
+            return rho_vec
+                
+        
+        rho_vec = np.zeros(indices.ldim_p*indices.ldim_p*num_elements, dtype = complex)    
+        for count_p1 in range(indices.ldim_p):
+            for count_p2 in range(indices.ldim_p):
+                for count in range(num_elements):
+                    element = indices.indices_elements[count]
+                    element_index = indices.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
+                    left = element[0:indices.nspins]
+                    right = element[indices.nspins:2*indices.nspins]
+                    rho_vec[element_index] = rho_p[count_p1, count_p2]
+                    for count_ns in range(indices.nspins):
+                        rho_vec[element_index] *= rho_s[left[count_ns], right[count_ns]]
+                        
+        # Now use the mapping list to get the desired block structure from the whole rho_vec:
+        rho_vec_block = []
+        for count in range(blocks):
+            rho_vec_block.append(rho_vec[indices.mapping_block[count]])
+        
+        return rho_vec_block   
+    
+    def setup_convert_rho_block_nrs(self):
+        indices = self.indices
+        # Setup reduced density matrix
+        nrs, ldim_s, ldim_p = self.nrs, indices.ldim_s, indices.ldim_p
+        indices_elements, nspins = indices.indices_elements, indices.nspins
+        num_blocks = len(indices.mapping_block)
+        num_elements = [len(block) for block in indices.mapping_block]
+        nu_max = num_blocks - 1
+
+        convert_rho_block = [
+                sp.lil_matrix(((ldim_p*ldim_s**nrs)**2, num), dtype=float)
+                for num in num_elements
+                ]
+
+        self.convert_rho_block_dic[nrs] = convert_rho_block
+
+        for count_p1 in range(ldim_p):
+            for count_p2 in range(ldim_p):
+                for count in range(len(indices_elements)):
+                    left = indices_elements[count][0:nspins]
+                    right = indices_elements[count][nspins:2*nspins]
+                    m_left = nspins-sum(left)
+                    m_right = nspins-sum(right)
+                    nu_left = m_left + count_p1
+                    nu_right = m_right + count_p2
+                    if nu_left != nu_right or nu_left > nu_max:                   
+                        continue
+                    nu = nu_left
+                    diff_arg = np.asarray(left != right).nonzero()[0] # indices where bra and ket differ (axis=0)
+                    diff_num = len(diff_arg) # number of different spin elements
+                    if diff_num > nrs:
+                        continue
+                    diff_left = left[diff_arg]
+                    diff_right = right[diff_arg]
+                    same = np.delete(left, diff_arg) # common elements
+                    element_index = ldim_p*len(indices_elements)*count_p1 + len(indices_elements)*count_p2 + count
+                    block_element_index = next((i for i, index in enumerate(indices.mapping_block[nu]) if index == element_index), None)
+                    if block_element_index is None:
+                        print('CRITICAL: mapping_block at nu={nu} is no index {element_index}!')
+                        sys.exit(1)
+                    # fill all matrix elements in column element_index according to different and same spins
+                    self.add_all_block(nrs, nu, count_p1, count_p2, diff_left, diff_right, same, block_element_index)
+        #for nu in range(num_blocks):
+        #    #for element_index in mapping_block[nu]:
+        #        #if element_index
+        #    for count in range(len(indices_elements)):
+        #        left = indices_elements[count][0:nspins]
+        #        right = indices_elements[count][nspins:2*nspins]
+        #        count_p1 = nu - (nspins - sum(left)) # number of photons in left
+        #        count_p2 = nu - (nspins - sum(right)) # number of photons in right
+        #        if count_p1 < 0 or count_p2 < 0 or count_p1 > nu_max or count_p2 > nu_max:
+        #            print(f'photon count incompatible with nu={nu}!')
+        #            continue
+        #        element_index = ldim_p*len(indices_elements)*count_p1 + len(indices_elements)*count_p2 + count
+        #        if element_index not in mapping_block[nu]:
+        #            print(f'{element_index} not in mapping block at nu={nu}!')
+        #            continue
+        #        diff_arg = np.asarray(left != right).nonzero()[0] # indices where bra and ket differ (axis=0)
+        #        diff_num = len(diff_arg) # number of different spin elements
+        #        if diff_num > nrs:
+        #            continue
+        #        # get elements that differ
+        #        diff_left = left[diff_arg]
+        #        diff_right = right[diff_arg]
+        #        same = np.delete(left, diff_arg) # common elements
+        #        element_index = count
+        #        # fill all matrix elements in column element_index according to different and same spins
+        #        add_all_block(nrs, nu, count_p1, count_p2, diff_left, diff_right, same, element_index)
+        
+        convert_rho_block = [block.tocsr() for block in convert_rho_block]
+
+        return convert_rho_block
+    
+    
+    def add_all_block(self, nrs, nu, count_p1, count_p2, left, right, same, block_element_index, s_start=0):
+        """Populate all entries in conversion_matrix with row indices associated with permutations of spin values
+        |left> and <right| and column index element_index according to the number of permutations of spin values in 
+        'same'.
+
+        nrs is the number of spins in the target reduced density matrix ('number reduced spins').
+        """
+        if len(left) == nrs:
+            # add contributions from same to rdm at |bra><ket|
+            self.add_to_convert_rho_block_dic(nrs, nu, count_p1, count_p2,
+                                         left, right, same, block_element_index)
+            return
+        # current |left> too short for rdm, so move element from same to |left> (and <right|)
+        # iterate through all possible values of spin...
+        for s in range(s_start, self.indices.ldim_s):
+            s_index = next((i for i,sa in enumerate(same) if sa==s), None)
+            # ...but only act on the spins that are actually in same
+            if s_index is None:
+                continue
+            # extract spin value from same, append to bra and ket
+            tmp_same = np.delete(same, s_index)
+            tmp_left = np.append(left, s)
+            tmp_right = np.append(right, s)
+            # repeat until |left> and <right| are correct length for rdm
+            self.add_all_block(nrs, nu, count_p1, count_p2, tmp_left, tmp_right, tmp_same, block_element_index, s_start=s)
+    
+    def add_to_convert_rho_block_dic(self,nrs, nu, count_p1, count_p2, diff_left, diff_right, same, block_element_index):
+        convert_rho_block = self.convert_rho_block_dic[nrs]
+        # number of permutations of spins in same, each of which contributes one unit 
+        combinations = _multinominal(np.bincount(same))
+        row_indices = self.get_all_row_indices(count_p1, count_p2, diff_left, diff_right)
+        for row_index in row_indices:
+            convert_rho_block[nu][row_index, block_element_index] = combinations
+            
+    def get_all_row_indices(self,count_p1, count_p2, spin_bra, spin_ket):
+        """Get all row indices of the conversion matrix corresponding to |count_p1><count_p2|
+        for the photon state and |diff_bra><diff_ket| for the spin states."""
+        assert len(spin_bra)==len(spin_ket)
+        nrs = len(spin_bra)
+        s_indices = np.arange(nrs)
+        row_indices = []
+        for perm_indices in permutations(s_indices):
+            index_list = list(perm_indices)
+            row_indices.append(self.get_rdm_index(count_p1, count_p2,
+                                             spin_bra[index_list],
+                                             spin_ket[index_list]))
+        return row_indices
+    
+    def get_rdm_index(self,count_p1, count_p2, spin_bra, spin_ket):
+        """Calculate row index in conversion matrix for element |count_p1><count_p2| for the 
+        photon part and |spin_bra><spin_ket| for the spin part.
+
+        This index is according to column-stacking convention used by qutip - see for example
+
+        A=qutip.Qobj(numpy.arange(4).reshape((2, 2))
+        print(qutip.operator_to_vector(A))
+        """
+        bra = np.concatenate(([count_p1],spin_bra))
+        ket = np.concatenate(([count_p2],spin_ket))
+        row = 0
+        column = 0
+        nrs = len(bra)-1
+        for i in range(nrs+1):
+            j = nrs-i
+            row += bra[j] * self.indices.ldim_s**i
+            column += ket[j] * self.indices.ldim_s**i
+        return row + column * self.indices.ldim_p * self.indices.ldim_s**nrs
+    
+    
+    
 
 if __name__ == '__main__':
     # Testing purposes
     
     # same parameters as in Peter Kirton's code.
-    ntls =5#number 2LS
+    ntls =2#number 2LS
+    nphot = ntls+1
     w0 = 1.0
     wc = 0.65
     Omega = 0.4
@@ -552,6 +774,8 @@ if __name__ == '__main__':
     gamma_phi = 0.03
     indi = Indices(ntls)
     L = BlockDicke(wc, w0,g, kappa, gamma_phi/4,gamma, indi)
+    rho = Rho(basis(nphot,0), basis(2,0), indi) # initial condition with zero photons and all spins up.
+    
 
 
 
