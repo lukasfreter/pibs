@@ -571,12 +571,18 @@ class Rho:
         self.nrs = nrs # number of spins in reduced density matrix
         self.indices = indices
         self.convert_rho_block_dic = {}
+        self.initial= []
+        
         
         # setup initial state
+        t0 = time()
+        print('Set up initial and reduced density matrix...')
         self.initial = self.setup_initial(rho_p, rho_s)
         
         # setup reduced density matrix
         self.setup_convert_rho_block_nrs()
+        elapsed= time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
         
         
     
