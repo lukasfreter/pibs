@@ -263,9 +263,6 @@ class Indices:
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
 
 
-        
-#blockDicke = BlockDice(0.1, 0.2, 0.1, ind)
-#blockDicke.L0 
 
 class BlockL:
     """Liouvillian for a given system in Block form. As a requirement, the Master
@@ -290,9 +287,6 @@ class BlockL:
     """
     def __init__(self, indices):
         # initialisation
-        self.kappa = kappa
-        self.gamma = gamma
-        self.gamma_phi = gamma_phi
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
                          'a': [],
@@ -301,16 +295,6 @@ class BlockL:
                          'H_g': []}
         self.L1_basis = {'sigmam': [],
                          'a': []}
-        
-        # get rid of these, only use dictionary
-        self.L0_sigmaz = []
-        self.L0_sigmam = []
-        self.L1_sigmam = []
-        self.L0_a = []
-        self.L1_a = []
-        self.L0_H_wc = []
-        self.L0_H_w0 =[]
-        self.L0_H_g = []
         
 
         # check if an object with the same arguments already exists in data/liouvillian/ folder
@@ -343,22 +327,13 @@ class BlockL:
         self.L0_basis = L_load.L0_basis
         self.L1_basis = L_load.L1_basis
         
-        # get rid of these, only use dictionary
-        self.L0_sigmaz = L_load.L0_sigmaz
-        self.L0_sigmam = L_load.L0_sigmam
-        self.L1_sigmam = L_load.L1_sigmam
-        self.L0_a = L_load.L0_a
-        self.L1_a = L_load.L1_a
-        self.L0_H_wc = L_load.L0_H_wc
-        self.L0_H_w0 = L_load.L0_H_w0
-        self.L0_H_g = L_load.L0_H_g
         # at least tell user what they loaded
         print(f'Loaded Liouvillian file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
     
         
     
-    def setup_L_block_basis(self, indices,H):
-       """ Calculate Liouvillian in block form"""
+    def setup_L_block_basis(self, indices):
+       """ Calculate Liouvillian basis in block form"""
        num_blocks = len(indices.mapping_block)
        
        #------------------------------------------------------
@@ -371,18 +346,17 @@ class BlockL:
            # setup the Liouvillians for the current block
            
            # rewrite in dictionary
-           L0_new ={}
-           L0_sigmam_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-           L0_sigmaz_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-           L0_a_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-           L0_H_wc_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-           L0_H_w0_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-           L0_H_g_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
+           L0_new ={'sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
+                    'sigmam': np.zeros((current_blocksize, current_blocksize), dtype=complex),
+                    'a': np.zeros((current_blocksize, current_blocksize), dtype=complex),
+                    'H_n': np.zeros((current_blocksize, current_blocksize), dtype=complex),
+                    'H_sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
+                    'H_g': np.zeros((current_blocksize, current_blocksize), dtype=complex)}
            
            if nu_element < num_blocks-1:
                next_blocksize = len(indices.mapping_block[nu_element+1])
-               L1_sigmam_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
-               L1_a_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
+               L1_new = {'sigmam': np.zeros((current_blocksize, next_blocksize), dtype=complex),
+                         'a': np.zeros((current_blocksize, next_blocksize), dtype=complex)}
 
            
            # Loop through all elements in the same block
@@ -412,8 +386,8 @@ class BlockL:
                    if (right_to_couple == right).all() and (left_to_couple == left).all():
                        s_down_right = sum(right[1:])
                        s_down_left = sum(left[1:])
-                       L0_H_wc_nu[count_in, count_out] = -1j * (left[0]-right[0])
-                       L0_H_w0_nu[count_in, count_out] = 1j*(s_down_left-s_down_right)
+                       L0_new['H_n'][count_in, count_out] = -1j * (left[0]-right[0])
+                       L0_new['H_sigmaz'][count_in, count_out] = 1j*(s_down_left-s_down_right)
                    
                    # offdiagonal parts
                    elif(states_compatible(right, right_to_couple)):
@@ -431,9 +405,9 @@ class BlockL:
                         # check if photon number in left state increases or decreases and
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                         if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
-                            L0_H_g_nu[count_in, count_out] = L0_H_g_nu[count_in, count_out]  - 1j*deg * np.sqrt(left[0])
+                            L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out]  - 1j*deg * np.sqrt(left[0])
                         elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
-                            L0_H_g_nu[count_in, count_out] = L0_H_g_nu[count_in, count_out] - 1j*deg * np.sqrt(left[0]+1)   
+                            L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out] - 1j*deg * np.sqrt(left[0]+1)   
                                
                    elif(states_compatible(left, left_to_couple)):            
                         # if they are compatible, permute right_to_couple appropriately for proper H element
@@ -448,9 +422,9 @@ class BlockL:
                         # check if photon number in right state increases or decreases and
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                         if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
-                            L0_H_g_nu[count_in, count_out] = L0_H_g_nu[count_in, count_out] + 1j*deg * np.sqrt(right[0])
+                            L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out] + 1j*deg * np.sqrt(right[0])
                         elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
-                            L0_H_g_nu[count_in, count_out] = L0_H_g_nu[count_in, count_out] + 1j*deg * np.sqrt(right[0]+1)
+                            L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out] + 1j*deg * np.sqrt(right[0]+1)
 
                    
                    
@@ -460,17 +434,17 @@ class BlockL:
                    if (right_to_couple == right).all() and (left_to_couple == left).all():
                        deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
                        deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
-                       L0_sigmam_nu[count_in,count_out] = - 1/2 * (deg_left+deg_right)
+                       L0_new['sigmam'][count_in,count_out] = - 1/2 * (deg_left+deg_right)
                    
                    # L0 part from L[sigmaz] -> whole dissipator
                    # Left and right states must be equal, because sigmaz is diagonal in the spins.
                    if (left_to_couple == left).all() and (right_to_couple == right).all():
                        equal = (left[1:indices.nspins+1] == right[1:indices.nspins+1]).sum()
-                       L0_sigmaz_nu[count_in][count_out] = 2*(equal - indices.nspins)
+                       L0_new['sigmaz'][count_in][count_out] = 2*(equal - indices.nspins)
                        
                    # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
                    if (left_to_couple == left).all() and (right_to_couple == right).all():
-                       L0_a_nu[count_in][count_out] = -1/2*(left[0] + right[0]) 
+                       L0_new['a'][count_in][count_out] = -1/2*(left[0] + right[0]) 
 
 
                    
@@ -501,313 +475,65 @@ class BlockL:
                        if (sum(left[1:]) - sum(left_to_couple[1:]) == 1) and (sum(right[1:]) - sum(right_to_couple[1:]) == 1):       
                            # Get the number of permutations, that contribute.                             
                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
-                           L1_sigmam_nu[count_in,count_out] = deg
+                           L1_new['sigmam'][count_in,count_out] = deg
                    
                    # L1 part from L[a] -> a * rho* adag
                    # since spins remain the same, first check if spin states match
                    # if spins match, then the element can couple, because we are looping through the block nu+1. Therefore
                    # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
-                       L1_a_nu[count_in][count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
+                       L1_new['a'][count_in][count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
            
             
-           # rewrite in dictionary
-           # for name in self.L0_basis:
-           #     self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
-
-           self.L0_sigmam.append(sp.csr_matrix(L0_sigmam_nu))
-           self.L0_sigmaz.append(sp.csr_matrix(L0_sigmaz_nu))
-           self.L0_a.append(sp.csr_matrix(L0_a_nu))
-           self.L0_H_wc.append(sp.csr_matrix(L0_H_wc_nu))
-           self.L0_H_w0.append(sp.csr_matrix(L0_H_w0_nu))
-           self.L0_H_g.append(sp.csr_matrix(L0_H_g_nu))
+           # append new blocks to the basis
+           for name in self.L0_basis:
+                self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
            
            if nu_element < num_blocks-1: 
-               self.L1_sigmam.append(sp.csr_matrix(L1_sigmam_nu))
-               self.L1_a.append(sp.csr_matrix(L1_a_nu))
-
-        
-    
-    def setup_L_block_a(self, indices):
-        """ Get Liouvillian part corresponding to L[a]"""
-        num_blocks = len(indices.mapping_block)
-        
-        #------------------------------------------------------
-        # First, get L0 part -> coupling to same block, 
-        #------------------------------------------------------
-        
-        # loop through all elements in block structure
-        for nu_element in range(num_blocks):
-            current_blocksize = len(indices.mapping_block[nu_element])
-            # setup the Liouvillians for the current block
-            L0_a_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-            if nu_element < num_blocks-1:
-                next_blocksize = len(indices.mapping_block[nu_element+1])
-                L1_a_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
-
+               for name in self.L1_basis:
+                   self.L1_basis[name].append(sp.csr_matrix(L1_new[name]))
             
-            # Loop through all elements in the same block
-            for count_in in range(current_blocksize):
-                # get element, of which we want the time derivative
-                element = indices.elements_block[nu_element][count_in]
-                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
-                right = element[indices.nspins+1:2*indices.nspins+2] # right state
-                
-                # now loop through all matrix elements in the same block, to get L0 couplings
-                for count_out in range(current_blocksize):
-                    # get "to couple" element
-                    element_to_couple = indices.elements_block[nu_element][count_out]
-                    left_to_couple = element_to_couple[0:indices.nspins+1]
-                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                    
-                    # elements which differ in photon number by 2 will never couple:
-                    if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                        continue
-                    
-                    # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
-                    if (left_to_couple == left).all() and (right_to_couple == right).all():
-                        L0_a_nu[count_in][count_out] = -1/2*(left[0] + right[0]) 
-                        
-                if nu_element == num_blocks-1:
-                    continue
-                # now loop through all matrix elements in the next block we want to couple to
-                for count_out in range(next_blocksize):
-                    # get "to couple" element
-                    element_to_couple = indices.elements_block[nu_element+1][count_out]
-                    left_to_couple = element_to_couple[0:indices.nspins+1]
-                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                    
-                    # elements which differ in photon number by 2 will never couple:
-                    if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                        continue
-                        
-                    # L1 part from L[a] -> a * rho* adag
-                    # since spins remain the same, first check if spin states match
-                    # if spins match, then the element can couple, because we are looping through the block nu+1. Therefore
-                    # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
-                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
-                        L1_a_nu[count_in][count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
-                
-            self.L0_a.append(sp.csr_matrix(L0_a_nu))
-            if nu_element < num_blocks-1:
-                self.L1_a.append(sp.crs_matrix(L1_a_nu))
-            
-
-    
-    def setup_L_block_H(self, indices,H):
-        """ Get Liouvillian part corresponding to -i[H,rho] """
-        num_blocks = len(indices.mapping_block)
-        
-        #------------------------------------------------------
-        # First, get L0 part -> coupling to same block, 
-        #------------------------------------------------------
-        
-        # loop through all elements in block structure
-        for nu_element in range(num_blocks):
-            current_blocksize = len(indices.mapping_block[nu_element])
-            # setup the Liouvillians for the current block
-            L0_H_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-
-            
-            # Loop through all elements in the same block
-            for count_in in range(current_blocksize):
-                # get element, of which we want the time derivative
-                element = indices.elements_block[nu_element][count_in]
-                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
-                right = element[indices.nspins+1:2*indices.nspins+2] # right state
-                
-                # now loop through all matrix elements in the same block, to get L0 couplings
-                for count_out in range(current_blocksize):
-                    # get "to couple" element
-                    element_to_couple = indices.elements_block[nu_element][count_out]
-                    left_to_couple = element_to_couple[0:indices.nspins+1]
-                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                    
-                    # elements which differ in photon number by 2 will never couple:
-                    if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                        continue
-                    
-                    #-----------------------------
-                    # get Liouvillian elements
-                    #-----------------------------
-                   
-                    # L0 part from Hamiltonian
-                    # Diagonal part
-                    if (right_to_couple == right).all() and (left_to_couple == left).all():
-                        s_down_right = sum(right[1:])
-                        s_down_left = sum(left[1:])
-                        L0_H_nu[count_in, count_out] = -1j * H.wc*(left[0]-right[0]) +1j*H.w0*(s_down_left-s_down_right)
-                    
-                    # offdiagonal parts
-                    elif(states_compatible(right, right_to_couple)):
-                         # if they are compatible, permute left_to_couple appropriately for proper H element
-                         left_to_couple_permute = np.copy(left_to_couple)
-                         if not (right_to_couple == right).all():
-                             # if they are compatible but not equal, we need to permute left_to_couple appropriately, to get correct matrix element of H
-                             left_to_couple_permute[1:] = permute_compatible(right[1:],right_to_couple[1:],left_to_couple[1:])
-                             
-                         # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
-                         if (left[1:]==left_to_couple_permute[1:]).sum() != indices.nspins-1:
-                             continue
-                         
-                         deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], left_to_couple_permute[1:]) # degeneracy from simulatneous spin permutations, which leave outer spins invariant
-                         # check if photon number in left state increases or decreases and
-                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
-                         if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
-                             L0_H_nu[count_in, count_out] = L0_H_nu[count_in, count_out]  - 1j*H.g*deg * np.sqrt(left[0])
-                         elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
-                             L0_H_nu[count_in, count_out] = L0_H_nu[count_in, count_out] - 1j*H.g*deg * np.sqrt(left[0]+1)   
-                                
-                    elif(states_compatible(left, left_to_couple)):            
-                         # if they are compatible, permute right_to_couple appropriately for proper H element
-                         right_to_couple_permute = np.copy(right_to_couple)
-                         if not (left_to_couple == left).all():
-                             right_to_couple_permute[1:] = permute_compatible(left[1:],left_to_couple[1:],right_to_couple[1:])
-                             
-                         # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
-                         if (right[1:]==right_to_couple_permute[1:]).sum() != indices.nspins-1:
-                             continue
-                         deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], right_to_couple_permute[1:])
-                         # check if photon number in right state increases or decreases and
-                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
-                         if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
-                             L0_H_nu[count_in, count_out] = L0_H_nu[count_in, count_out] + 1j*H.g*deg * np.sqrt(right[0])
-                         elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
-                             L0_H_nu[count_in, count_out] = L0_H_nu[count_in, count_out] + 1j*H.g*deg * np.sqrt(right[0]+1)
-            self.L0_H.append(sp.csr_matrix(L0_H_nu))
-        
-    def setup_L_block_sigmaz(self, indices):
-        """ Get Liouvillian part corresponding to L[sigmaz] for gamma_phi=1.
-        This liouvillian can then be scaled by any gamma_phi."""
-        num_blocks = len(indices.mapping_block)
-
-        # loop through all elements in block structure
-        for nu_element in range(num_blocks):
-            current_blocksize = len(indices.mapping_block[nu_element])
-            L0_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-            
-            # For each nu, calculate part of the liouvillian that couples
-            # to same nu, stored in L0
-            for count_in in range(current_blocksize):
-                # get element, of which we want the time derivative
-                element = indices.elements_block[nu_element][count_in]
-                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
-                right = element[indices.nspins+1:2*indices.nspins+2] # right state
-                
-                # now loop through all matrix elements, that could couple to "element"
-                # for L[sigmaz], they are all in the same block.
-                for count_out in range(current_blocksize):
-                    # get "to couple" element
-                    element_to_couple = indices.elements_block[nu_element][count_out]
-                    left_to_couple = element_to_couple[0:indices.nspins+1]
-                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                    
-                    # get Liouvillian element. Left and right states must be equal,
-                    # because sigmaz is diagonal in the spins.
-                    if (left_to_couple == left).all() and (right_to_couple == right).all():
-                        equal = (left[1:indices.nspins+1] == right[1:indices.nspins+1]).sum()
-                        L0_nu[count_in][count_out] = 2*(equal - indices.nspins)
-            self.L0_sigmaz.append(sp.csr_matrix(L0_nu))
-        
-    def setup_L_block_sigmam(self, indices):
-        """ Get Liouvillian part corresponding to L[sigmam] """
-        num_blocks = len(indices.mapping_block)
-        
-        # First, get L0_sigmam -> coupling to same block, from terms -sigmap*sigmam*rho - rho*sigmap*sigmam
-        # loop through all elements in block structure
-        for nu_element in range(num_blocks):
-            current_blocksize = len(indices.mapping_block[nu_element])
-            L0_nu = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-            
-            # For each nu, calculate part of the liouvillian that couples
-            # to same nu, stored in L0
-            for count_in in range(current_blocksize):
-                # get element, of which we want the time derivative
-                element = indices.elements_block[nu_element][count_in]
-                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
-                right = element[indices.nspins+1:2*indices.nspins+2] # right state
-                
-                # now loop through all matrix elements in that block
-                for count_out in range(current_blocksize):
-                    # get "to couple" element
-                    element_to_couple = indices.elements_block[nu_element][count_out]
-                    left_to_couple = element_to_couple[0:indices.nspins+1]
-                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                    
-                    # get Liouvillian element
-                    # make use of the fact that all spin indices contribute only, if left and right spin states in sigma^+sigma^- are both up
-                    # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
-                    if (right_to_couple == right).all() and (left_to_couple == left).all():
-                        deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
-                        deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
-                        L0_nu[count_in,count_out] = - 1/2 * (deg_left+deg_right)
-            self.L0_sigmam.append(sp.csr_matrix(L0_nu))
-        
-        # Now get L1_sigmam, which couples elements from nu to nu+1
-        for nu_element in range(num_blocks):
-            if nu_element == num_blocks-1:
-                continue
-            current_blocksize = len(indices.mapping_block[nu_element])
-            next_blocksize = len(indices.mapping_block[nu_element+1])
-            L1_nu = np.zeros((current_blocksize, next_blocksize), dtype=complex)
-            
-            for count_in in range(current_blocksize):
-                # get element, of which we want the time derivative
-                element = indices.elements_block[nu_element][count_in]
-                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
-                right = element[indices.nspins+1:2*indices.nspins+2] # right state
-                
-                # now loop through all matrix elements in the next block we want to couple to
-                for count_out in range(next_blocksize):
-                    # get "to couple" element
-                    element_to_couple = indices.elements_block[nu_element+1][count_out]
-                    left_to_couple = element_to_couple[0:indices.nspins+1]
-                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                    
-                    # get Liouvillian element
-                    # L[sigma^-] contribution sigma^- * rho * sigma^+. changes spin excitation number.
-                    # Photons must remain the same
-                    if (left[0] == left_to_couple[0] and right[0] == right_to_couple[0]):
-                        # we have to compute matrix elements of sigma^- and sigma^+. Therefore, check first if 
-                        # number of spin up in "right" and "right_to_couple" as well as "left" and "left_to_coupole" vary by one
-                        if (sum(left[1:]) - sum(left_to_couple[1:]) == 1) and (sum(right[1:]) - sum(right_to_couple[1:]) == 1):       
-                            # Get the number of permutations, that contribute.                             
-                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
-                            L1_nu[count_in,count_out] = deg
-            self.L1_sigmam.append(sp.csr_matrix(L1_nu))
-            
-            
-                       
+                                 
                         
 class BlockDicke(BlockL):
-    def __init__(self,w0,wc,g, kappa, gamma, gamma_phi, indices):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices):
+        self.rates = {'H_n': wc,
+                      'H_sigmaz': w0,
+                      'H_g': g,
+                      'a': kappa,
+                      'sigmaz': gamma_phi,
+                      'sigmam': gamma}
         self.w0 = w0
         self.wc = wc
         self.g = g
         self.kappa = kappa
         self.gamma = gamma
         self.gamma_phi = gamma_phi
-        super().__init__()
+        self.L0 = []
+        self.L1 = []
+        super().__init__(indices)
         
         self.setup_L(indices)
 
     def setup_L(self, indices):
         """ From the basic parts of the Liouvillian, get the whole Liouvillian
         by proper scaling."""
-        self.L0 = []
-        self.L1 = []
         
         # use dictionary notation
         num_blocks = len(indices.mapping_block)
         for nu in range(num_blocks):
-            L0_scale = (self.gamma_phi * self.L0_sigmaz[nu] + self.gamma*self.L0_sigmam[nu] +
-                        self.kappa*self.L0_a[nu] + self.wc * self.L0_H_wc[nu] + self.w0 * self.L0_H_w0[nu]
-                        + self.g * self.L0_H_g[nu])
-            self.L0.append(sp.csr_matrix(L0_scale))
+            current_blocksize = len(indices.mapping_block[nu])
+            L0_scale = np.zeros((current_blocksize, current_blocksize), dtype=complex)
+            for name in self.L0_basis:
+                L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
+            self.L0.append( sp.csr_matrix(L0_scale ))
             
             if nu < num_blocks -1:
-                L1_scale = (self.gamma * self.L1_sigmam[nu] + self.kappa * self.L1_a[nu])
-                self.L1.append(sp.csr_matrix(L1_scale))                     
+                next_blocksize = len(indices.mapping_block[nu+1])
+                L1_scale = np.zeros((current_blocksize, next_blocksize), dtype=complex)
+                for name in self.L1_basis:
+                    L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
+                self.L1.append( sp.csr_matrix(L1_scale))                     
 
         
        
@@ -816,7 +542,7 @@ if __name__ == '__main__':
     # Testing purposes
     
     # same parameters as in Peter Kirton's code.
-    ntls =20#number 2LS
+    ntls =5#number 2LS
     w0 = 1.0
     wc = 0.65
     Omega = 0.4
@@ -825,7 +551,7 @@ if __name__ == '__main__':
     gamma = 0.02
     gamma_phi = 0.03
     indi = Indices(ntls)
-    L = BlockDicke(w0, wc,g, kappa, gamma, gamma_phi/4, indi)
+    L = BlockDicke(wc, w0,g, kappa, gamma_phi/4,gamma, indi)
 
 
 
