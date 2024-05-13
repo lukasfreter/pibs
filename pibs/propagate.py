@@ -45,7 +45,34 @@ class Progress:
 
 
 class TimeEvolve():
-    """ Class to handle time evolution of the quantum system """
+    """ Class to handle time evolution of the quantum system. There are two
+    main methods to solve the time evolution:
+        
+    time_evolve_block:
+        This method solves the block structure block for block sequentially.
+        Meaning, starting with the block of highest excitation number nu_max, we solve
+        the whole time evolution 
+        
+                d/dt rho_nu_max = L0_nu_max * rho_nu_max
+                
+        All states rho_nu_max are stored. Then we can iteratively solve for the lower
+        blocks using
+        
+                d/dt rho_nu = L0_nu * rho_nu + L1_{nu+1} * rho_{nu+1}
+        
+        If all blocks have been solved, we can compute the desired expectation values.
+        
+    time_evolve_chunk:
+        This method sovles the block structure in a parallel manner. The time
+        evolution is segmented into chunks of given number of time steps. In 
+        the first time chunk, we solve the system for rho_nu_max. In the second
+        time chunk, we solve the system for rho_nu_max, and additionally we can
+        solve for rho_nu_max-1 for the first chunk, by using the result of rho_nu_max.
+        That way, we maximize the amount of calculations we can do in parallel.
+        Further, we can compute the expectation values for every chunk and then 
+        discard the states, such that memory usage can be minimized.
+        """
+        
     def __init__(self, rho, L, indices, tend, dt , atol=1e-5, rtol=1e-5):
         self.tend = tend
         self.dt = dt
@@ -62,6 +89,24 @@ class TimeEvolve():
     
     
     def evolve_numax(self,rho0,t0, chunksize, store_initial):
+        """
+        Calculate the time evolution of the block nu_max of highest excitation number.
+        Elements in this block only couple to other elements in this block.
+
+
+        Parameters
+        ----------
+        rho0 : initial state
+        t0 : initial time
+        chunksize : Number of time steps of the integration
+        store_initial : boolean value that determines, if the initial state is 
+                    saved as the first state in the time evolution
+
+        Returns
+        -------
+        rho : time evolved density matrix
+
+        """
         
         nu_max = len(self.indices.mapping_block) - 1
         blocksize= len(self.indices.mapping_block[nu_max])
@@ -88,8 +133,25 @@ class TimeEvolve():
     
     
     def evolve_nu(self, rho0_nu, rho_nup1, t0, nu, chunksize, store_initial):
-        """ Time evolution of block nu with initial value rho0. rho0_nup1 is an array
-        of length chunksize, which is the coupling to the block nu+1."""
+        """
+        Time evolution of block nu, which can couple to block nu+1
+
+        Parameters
+        ----------
+        rho0_nu : initial state of block nu
+        rho_nup1 : states of block nu+1 for each time step
+        t0 : initial time
+        nu : total excitation number
+        chunksize : Number of time steps of the integration
+        store_initial : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        rho_nu : boolean value that determines, if the initial state is 
+                    saved as the first state in the time evolution
+
+        """
         
         blocksize= len(self.indices.mapping_block[nu])
         # initial values
@@ -141,35 +203,35 @@ class TimeEvolve():
         # keep track, where to write and where to read for each block
         write = [0] * len(self.indices.mapping_block) # zero means, write in first chunk. One means, write in second chunk
         
-        # initialize rhos_chunk. Put initial state at the end of the first chunksize block,
-        # such that it can act as initial state of the second chunksize block. 
-        # After that, the last element of the second chunksize blick acts as initial state,
-        # and the future states will be written in the first chunksize block
-        for nu in range(num_blocks):
-            #rhos_chunk[nu][:,chunksize-1] = self.rho.initial[nu]
-            rhos_chunk[nu][:,0] = self.rho.initial[nu]
+        # initialize rhos_chunk.
+        # for nu in range(num_blocks):
+        #     rhos_chunk[nu][:,0] = self.rho.initial[nu]
             
+        # initial states for each block. Needs to be updated after each chunk calculation
         initial = [np.copy(self.rho.initial[nu]) for nu in range(num_blocks)]
 
-        
         # initialize expectation values
         self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
-        # for nu in range(num_blocks):
-        #     self.result.expect[:,0] = self.result.expect[:,0] +  np.array(self.expect_comp_block([self.rho.initial[nu]],nu, expect_oper)).flatten()
-        # self.result.t= [t0]
         
         # Loop until a chunk is outside of ntimes
         count = 0
+        
+        # The calculation for block nu can only be started after (nu_max-nu) chunks.
+        # total computation steps: ntimes + (nu_max-1) * chunksize
         while count * chunksize - (nu_max-1)*chunksize < ntimes:    # - (nu_max-1)*chunktimes, because the nu blocks have to be solved with a time delay      
             # first calculate block nu_max
             t0_numax = t0+count*chunksize*self.dt
             
+            # only calculate time evolution, if tend has not been reached yet
             if t0_numax <= self.tend:
+                # In the initial chunk, save the initial state. Otherwise, don't save initial state,
+                # because it has already been calculated as the final state of the previous chunk
                 if count == 0:
                     save_initial = True
                 else:
                     save_initial = False
-                        
+                    
+                # do the time evolution and store it in the appropriate indices of rho_chunk     
                 rhos_chunk[nu_max][:,write[nu_max]*chunksize:(write[nu_max]+1)*chunksize] =(
                     self.evolve_numax(initial[nu_max], t0_numax, chunksize, save_initial))
                 # update initial value for next chunk
@@ -195,6 +257,8 @@ class TimeEvolve():
             # get the number of blocks, one can simultaneously propagate in current chunk
             # cannot exceet num_blocks, otherwise grows linearly with number of chunks
             parallel_blocks = min(count+1, num_blocks) 
+            
+            # repeat what has been done already for nu_max
             for nu in range(nu_max -1,nu_max - parallel_blocks, -1):              
                 t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt
                 
