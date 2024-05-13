@@ -61,12 +61,12 @@ class TimeEvolve():
         
     
     
-    def evolve_numax(self,rho0,t0, chunksize):
+    def evolve_numax(self,rho0,t0, chunksize, store_initial):
         
         nu_max = len(self.indices.mapping_block) - 1
         blocksize= len(self.indices.mapping_block[nu_max])
         
-        #initial values
+        # initialize rho
         rho = np.zeros((blocksize, chunksize), dtype = complex)
         
         # integrator
@@ -74,8 +74,12 @@ class TimeEvolve():
         r.set_initial_value(rho0,t0).set_f_params(self.L.L0[nu_max])
         
         # integrate
-        n_t=0
-        while r.successful() and n_t<chunksize:
+        if store_initial:
+            rho[:,0] = rho0
+            n_t = 1
+        else:
+            n_t=0
+        while r.successful() and n_t < chunksize:
             rho_step = r.integrate(r.t+self.dt)
             rho[:,n_t] = rho_step
             n_t += 1
@@ -83,27 +87,35 @@ class TimeEvolve():
         return rho
     
     
-    def evolve_nu(self, rho0_nu, rho0_nup1, t0, nu, chunksize):
+    def evolve_nu(self, rho0_nu, rho_nup1, t0, nu, chunksize, store_initial):
         """ Time evolution of block nu with initial value rho0. rho0_nup1 is an array
         of length chunksize, which is the coupling to the block nu+1."""
         
+        blocksize= len(self.indices.mapping_block[nu])
         # initial values
-        rho = [rho0_nu]
-        t = [t0]
-        
+        rho_nu = np.zeros((blocksize, chunksize), dtype = complex)
+                    
         # integrator 
         r = ode(_intfunc_block).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol)
-        r.set_initial_value(rho0_nu, t0).set_f_params(self.L.L0[nu], self.L.L1[nu], rho0_nup1[0])
+        r.set_initial_value(rho0_nu, t0).set_f_params(self.L.L0[nu], self.L.L1[nu], rho_nup1[:,0])
         
-        n_t=1
+        if store_initial:
+            rho_nu[:,0] = rho0_nu
+            n_t = 1
+        else:
+            n_t=0
+        n_nup1 = 1
         while r.successful() and n_t<chunksize:
-            rho.append(r.integrate(r.t+self.dt))
+            rho_step = r.integrate(r.t+self.dt)
+            rho_nu[:, n_t] = rho_step
             
-            # update integrator:
-            r = ode(_intfunc_block).set_integrator('zvode', method = 'bdf',
-                    atol=self.atol, rtol=self.rtol).set_initial_value(r.y,r.t).set_f_params(self.L.L0[nu],self.L.L1[nu],rho0_nup1[n_t])
+            # update integrator in n_up1 smaller than chunksize
+            if n_nup1 < chunksize:
+                r = ode(_intfunc_block).set_integrator('zvode', method = 'bdf',
+                        atol=self.atol, rtol=self.rtol).set_initial_value(r.y,r.t).set_f_params(self.L.L0[nu],self.L.L1[nu],rho_nup1[:,n_nup1])
+                n_nup1 = n_nup1+1
             n_t += 1
-        return rho
+        return rho_nu
         
     
     def time_evolve_chunk(self, expect_oper, progress=False):
@@ -126,84 +138,93 @@ class TimeEvolve():
         
         # setup rhos as double the chunksize, such that there is space for one chunk for feedforward,
         # and one chunk for calculating the future time evolution.
-        rhos_chunk= [np.zeros((len(self.indices.mapping_block[i]),2*chunksize), dtype=complex) for i in range(num_blocks)] 
+        rhos_chunk = [np.zeros((len(self.indices.mapping_block[i]),2*chunksize), dtype=complex) for i in range(num_blocks)] 
         
         # keep track, where to write and where to read for each block
-        write = [1] * len(self.indices.mapping_block) # zero means, write in first chunk. One means, write in second chunk
+        write = [0] * len(self.indices.mapping_block) # zero means, write in first chunk. One means, write in second chunk
         
         # initialize rhos_chunk. Put initial state at the end of the first chunksize block,
         # such that it can act as initial state of the second chunksize block. 
         # After that, the last element of the second chunksize blick acts as initial state,
         # and the future states will be written in the first chunksize block
         for nu in range(num_blocks):
-            rhos_chunk[nu][:,chunksize-1] = self.rho.initial[nu]
+            #rhos_chunk[nu][:,chunksize-1] = self.rho.initial[nu]
+            rhos_chunk[nu][:,0] = self.rho.initial[nu]
+            
+        initial = [np.copy(self.rho.initial[nu]) for nu in range(num_blocks)]
+
         
         # initialize expectation values
         self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
-        self.result.expect[:,0] =  np.array(self.expect_comp_block([self.rho.initial[nu_max]],nu_max, expect_oper)).flatten()
-        self.result.t= [t0]
+        # for nu in range(num_blocks):
+        #     self.result.expect[:,0] = self.result.expect[:,0] +  np.array(self.expect_comp_block([self.rho.initial[nu]],nu, expect_oper)).flatten()
+        # self.result.t= [t0]
         
         # Loop until a chunk is outside of ntimes
         count = 0
-        while count * chunksize < ntimes:          
+        while count * chunksize - (nu_max-1)*chunksize < ntimes:    # - (nu_max-1)*chunktimes, because the nu blocks have to be solved with a time delay      
             # first calculate block nu_max
-            initial = rhos_chunk[nu_max][:,((write[nu_max]+1)%2)*chunksize+chunksize-1]
+            t0_numax = t0+count*chunksize*self.dt
             
-            rhos_chunk[nu_max][:,write[nu_max]*chunksize:(write[nu_max]+1)*chunksize] = (
-                self.evolve_numax(initial, t0+count*chunksize*self.dt, chunksize))
-            
-            
-            parallel_blocks = min(count, num_blocks) # number of blocks we can simultaneously calculate in current chunk
-                                                    # cannot exceet num_blocks, otherwise grows linearly with number of chunks
-            # Now the other blocks: take care of when it is allowed to calculate a block.
-            # e.g. to calculate block nu, block nu+1 must have been calculated in previous block.
-            x = rhos_chunk[nu_max][:,:]                                       
-            # for nu in range(parallel_blocks):
-            #     initial_nu = 
-            
-            
-            # Calculate expectation values of all blocks that are available
-            i=0
-            for t_idx in range(count*chunksize+1, (count+1)*chunksize+1):
-                if t_idx >= ntimes:
-                    continue
-                read_index = write[nu_max] *chunksize
-                self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  (
-                    np.array(self.expect_comp_block([rhos_chunk[nu_max][:,read_index+ i]],nu, expect_oper)).flatten())
-                self.result.t.append(t_idx*self.dt)
-                i = i+1
-            write[nu_max] = (write[nu_max] + 1) % 2 # if 1 make it 0, if 0 make it 1
+            if t0_numax <= self.tend:
+                if count == 0:
+                    save_initial = True
+                else:
+                    save_initial = False
+                        
+                rhos_chunk[nu_max][:,write[nu_max]*chunksize:(write[nu_max]+1)*chunksize] =(
+                    self.evolve_numax(initial[nu_max], t0_numax, chunksize, save_initial))
+                # update initial value for next chunk
+                initial[nu_max] = rhos_chunk[nu_max][:,(write[nu_max]+1) * chunksize-1]
+
+                # get part of expectation value corresponding to nu_max of that chunk
+                i=0
+                for t_idx in range(count*chunksize, (count+1)*chunksize):
+                    if t_idx >= ntimes:
+                        continue
+                    read_index = write[nu_max] * chunksize
+
+                    self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  (
+                        np.array(self.expect_comp_block([rhos_chunk[nu_max][:,read_index+ i]],nu_max, expect_oper)).flatten())
+                    self.result.t.append(t_idx*self.dt)
+                    i = i+1
+                
+                # update write variable
+                write[nu_max] = (write[nu_max] + 1) % 2 # if 1 make it 0, if 0 make it 1
+                x = rhos_chunk[nu_max][:,:]     
+                y = self.result.expect                                  
+
+            # get the number of blocks, one can simultaneously propagate in current chunk
+            # cannot exceet num_blocks, otherwise grows linearly with number of chunks
+            parallel_blocks = min(count+1, num_blocks) 
+            for nu in range(nu_max -1,nu_max - parallel_blocks, -1):              
+                t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt
+                
+                if t0_nu <= self.tend:
+                    if count - (nu_max-nu) == 0:
+                        save_initial = True
+                    else:
+                        save_initial = False
+                    rhos_chunk[nu][:, write[nu] * chunksize:(write[nu]+1)*chunksize] = (
+                        self.evolve_nu(initial[nu],rhos_chunk[nu+1][:,write[nu] * chunksize:(write[nu]+1)*chunksize], t0_nu, nu, chunksize, save_initial))
+                    # update initial value for next chunk
+                    initial[nu] = rhos_chunk[nu][:,(write[nu]+1) * chunksize-1]
+                    
+                    # get part of expectation value corresponding to nu of that chunk
+                    i=0
+                    for t_idx in range((count-(nu_max-nu))*chunksize, (count-(nu_max-nu)+1)*chunksize):
+                        if t_idx >= ntimes:
+                            continue
+                        read_index = write[nu] * chunksize
+                        self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  (
+                            np.array(self.expect_comp_block([rhos_chunk[nu][:,read_index+ i]],nu, expect_oper)).flatten())
+                        i = i+1
+                    # update write variable
+                    write[nu] = (write[nu] + 1) % 2 # if 1 make it 0, if 0 make it 1
+                    
+
 
             count = count+1
-
-            # else:
-                
-            #     # Now, do the feed forward for all other blocks. Need different integration function, _intfunc_block
-            #     for nu in range(num_blocks-2, -1,-1):
-            #         r = ode(_intfunc_block).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol)
-            #         r.set_initial_value(self.rho.initial[nu],t0).set_f_params(self.L.L0[nu], self.L.L1[nu], rhos[nu+1][0])
-                    
-            #         #Record initial values
-            #         rhos[nu].append(self.rho.initial[nu])
-                    
-            #         n_t=1
-            #         while r.successful() and n_t<ntimes:
-            #             rho = r.integrate(r.t+self.dt)
-            #             rhos[nu].append(rho)
-                        
-            #             # update integrator:
-            #             r = ode(_intfunc_block).set_integrator('zvode', method = 'bdf',
-            #                     atol=self.atol, rtol=self.rtol).set_initial_value(r.y,r.t).set_f_params(self.L.L0[nu],self.L.L1[nu],rhos[nu+1][n_t])
-            #             n_t += 1
-               
-
-        # Now with all rhos, we can calculate the expectation values:
-        # if expect_oper is not None:
-        #     self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
-
-        #     for t_idx in range(ntimes):
-        #         for nu in range(num_blocks):
-        #             self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  np.array(self.expect_comp_block([rhos[nu][t_idx]],nu, expect_oper)).flatten()
 
         elapsed = time()-tstart
         print(f'Complete {elapsed:.0f}s', flush=True)
