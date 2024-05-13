@@ -118,7 +118,7 @@ class TimeEvolve():
         return rho_nu
         
     
-    def time_evolve_chunk(self, expect_oper, progress=False):
+    def time_evolve_chunk(self, expect_oper, chunksize = 50, progress=False):
         """ Parallelize and minimize the amount of stored states """
         if expect_oper == None:
             self.time_evolve_block(save_states=True, progress=progress)
@@ -133,8 +133,6 @@ class TimeEvolve():
         t0 = 0
         ntimes = int(self.tend/self.dt)+1
         
-        # number of timesteps to be solved in one go
-        chunksize = 50
         
         # setup rhos as double the chunksize, such that there is space for one chunk for feedforward,
         # and one chunk for calculating the future time evolution.
