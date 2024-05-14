@@ -293,7 +293,7 @@ class BlockL:
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
     """
-    def __init__(self, indices, parallel= False):
+    def __init__(self, indices, parallel=0):
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
@@ -315,10 +315,13 @@ class BlockL:
             # if not, calculate them
 
             t0 = time()
-            if parallel:
+            if parallel==2:
+                print('Calculating normalized L parallel2 ...')
+                self.setup_L_block_basis_parallel2(indices)
+            elif parallel==1:
                 print('Calculating normalized L parallel ...')
                 self.setup_L_block_basis_parallel(indices)
-            else:
+            elif parallel ==0:
                 print('Calculating normalized L serial ...')
                 self.setup_L_block_basis(indices)
             elapsed = time()-t0
@@ -810,10 +813,89 @@ class BlockL:
            
        print('done')
        
+       
+    # def get_L0_H_n(self,left,right,left_to_couple,right_to_couple):
+        
+        
      
+        
+    # def calc_L0_H_n(self, indices):
+    #    num_blocks = len(indices.mapping_block)
        
-       
-       
+    #    # loop through all elements in block structure
+    #    for nu_element in range(num_blocks):
+    #        current_blocksize = len(indices.mapping_block[nu_element])
+    #        # setup the Liouvillians for the current block
+    #        L0 = []
+           
+    #        # Loop through all elements in the same block
+    #        for count_in in range(current_blocksize):
+    #            # get element, of which we want the time derivative
+    #            element = indices.elements_block[nu_element][count_in]
+    #            left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
+    #            right = element[indices.nspins+1:2*indices.nspins+2] # right state
+               
+    #            # now loop through all matrix elements in the same block, to get L0 couplings
+    #            for count_out in range(current_blocksize):
+    #                # get "to couple" element
+    #                element_to_couple = indices.elements_block[nu_element][count_out]
+    #                left_to_couple = element_to_couple[0:indices.nspins+1]
+    #                right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
+                   
+    #                # elements which differ in photon number by 2 will never couple:
+    #                if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
+    #                    continue
+                   
+    #                #-----------------------------
+    #                # get Liouvillian elements
+    #                #-----------------------------
+                  
+    #                # L0 part from Hamiltonian
+    #                # Diagonal part
+    #                if (right_to_couple == right).all() and (left_to_couple == left).all():
+    #                    s_down_right = sum(right[1:])
+    #                    s_down_left = sum(left[1:])
+    #                    L0_new['H_n'][count_in, count_out] = -1j * (left[0]-right[0])
+    #                    L0_new['H_sigmaz'][count_in, count_out] = 1j*(s_down_left-s_down_right)
+                   
+    #                # offdiagonal parts
+    #                elif(states_compatible(right, right_to_couple)):
+    #                     # if they are compatible, permute left_to_couple appropriately for proper H element
+    #                     left_to_couple_permute = np.copy(left_to_couple)
+    #                     if not (right_to_couple == right).all():
+    #                         # if they are compatible but not equal, we need to permute left_to_couple appropriately, to get correct matrix element of H
+    #                         left_to_couple_permute[1:] = permute_compatible(right[1:],right_to_couple[1:],left_to_couple[1:])
+                            
+    #                     # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
+    #                     if (left[1:]==left_to_couple_permute[1:]).sum() != indices.nspins-1:
+    #                         continue
+                        
+    #                     deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], left_to_couple_permute[1:]) # degeneracy from simulatneous spin permutations, which leave outer spins invariant
+    #                     # check if photon number in left state increases or decreases and
+    #                     # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
+    #                     if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
+    #                         L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out]  - 1j*deg * np.sqrt(left[0])
+    #                     elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
+    #                         L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out] - 1j*deg * np.sqrt(left[0]+1)   
+                               
+    #                elif(states_compatible(left, left_to_couple)):            
+    #                     # if they are compatible, permute right_to_couple appropriately for proper H element
+    #                     right_to_couple_permute = np.copy(right_to_couple)
+    #                     if not (left_to_couple == left).all():
+    #                         right_to_couple_permute[1:] = permute_compatible(left[1:],left_to_couple[1:],right_to_couple[1:])
+                            
+    #                     # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
+    #                     if (right[1:]==right_to_couple_permute[1:]).sum() != indices.nspins-1:
+    #                         continue
+    #                     deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], right_to_couple_permute[1:])
+    #                     # check if photon number in right state increases or decreases and
+    #                     # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
+    #                     if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
+    #                         L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out] + 1j*deg * np.sqrt(right[0])
+    #                     elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
+    #                         L0_new['H_g'][count_in, count_out] = L0_new['H_g'][count_in, count_out] + 1j*deg * np.sqrt(right[0]+1)
+
+                   
        
                         
 class BlockDicke(BlockL):
@@ -824,7 +906,7 @@ class BlockDicke(BlockL):
     Model:
         H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
         d/dt rho = -i[H,rho] + kappa*L[a] + gamma*L[sigmam] + gamma_phi*L[sigmaz]"""
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=False):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         self.rates = {'H_n': wc,
