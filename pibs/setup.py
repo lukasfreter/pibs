@@ -293,7 +293,7 @@ class BlockL:
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
     """
-    def __init__(self, indices, parallel=0):
+    def __init__(self, indices, parallel=0, debug=False):
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
@@ -309,11 +309,10 @@ class BlockL:
         liouv_path = 'data/liouvillians/'
         liouv_files = os.listdir(liouv_path)
         filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
-        if (any([f == filename for f in liouv_files])):
+        if (any([f == filename for f in liouv_files])) and not debug:
             self.load(liouv_path+filename, indices)
         else:
             # if not, calculate them
-
             t0 = time()
             if parallel==2:
                 print('Calculating normalized L parallel2 ...')
@@ -327,7 +326,7 @@ class BlockL:
             elapsed = time()-t0
             print(f'Complete {elapsed:.0f}s', flush=True)
             # export normalized Liouvillians for later use
-            #self.export(liouv_path+filename)
+            self.export(liouv_path+filename)
         
         
     
@@ -906,7 +905,7 @@ class BlockDicke(BlockL):
     Model:
         H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
         d/dt rho = -i[H,rho] + kappa*L[a] + gamma*L[sigmam] + gamma_phi*L[sigmaz]"""
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0, debug=False):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         self.rates = {'H_n': wc,
@@ -923,7 +922,7 @@ class BlockDicke(BlockL):
         self.gamma_phi = gamma_phi
         self.L0 = []
         self.L1 = []
-        super().__init__(indices, parallel)
+        super().__init__(indices, parallel,debug)
         
         self.setup_L(indices)
 
