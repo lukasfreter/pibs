@@ -32,7 +32,7 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, parallel=True, debug=False):
+    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False):
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
             raise ValueError("Number of spins must be integer N > 0")
@@ -70,12 +70,14 @@ class Indices:
             # setup mapping block
             print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
             t0 = time()
-            self.setup_mapping_block(parallel)
+            self.setup_mapping_block()
             elapsed = time()-t0
             print(f'Complete {elapsed:.0f}s', flush=True)
             
             # export for future use
             self.export(index_path + filename)
+        for nu in range(len(self.mapping_block)):
+            assert len(self.mapping_block[nu]) == len(self.elements_block[nu])
                 
     
     def list_equivalent_elements(self):
@@ -138,33 +140,7 @@ class Indices:
         
         return spin_indices
     
-    
-    
-    def mapping_task(self, args_tuple):
-        """ Function to parallelize setup_mapping_block"""
-        nu_max = self.nspins
-        count_p1, count_p2, count = args_tuple
-        num_elements = len(self.indices_elements)
-        element = self.indices_elements[count]
-        element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
-        
-        # get left and right states (photon numbers and spin states)
-        left = element[0:self.nspins]
-        right = element[self.nspins:2*self.nspins]
-        
-        # calculate total excitation number. Note: spin up is 0, spin down is 1!
-        m_left = self.nspins-sum(left)
-        m_right = self.nspins-sum(right)
-        nu_left = m_left + count_p1
-        nu_right = m_right + count_p2
-        
-        # if left and right excitation numbers are equal and below maximum, add them to list
-        if nu_left == nu_right and nu_left <= nu_max:                   
-            el = np.concatenate(([count_p1], left, [count_p2],right))
-            return (nu_left, element_index, el)
-    
-    
-    def setup_mapping_block(self, parallel=False):
+    def setup_mapping_block(self):
         """
         Generate mapping between reduced representation of density matrix and
         the block structure, which is grouped in different numbers of total excitations
@@ -180,26 +156,30 @@ class Indices:
         
         self.mapping_block = [ [] for _ in range(nu_max+1)] # list of nu_max+1 empty lists
         self.elements_block = [ [] for _ in range(nu_max+1)]
-        
-        if parallel:  # parallel version  
-            arglist = []
-            t0 = time()
-            for count_p1, count_p2, count in product(range(self.ldim_p), range(self.ldim_p), range(num_elements)):
-                arglist.append((count_p1, count_p2, count))
-        
-            with Pool() as p:
-                results = p.map(self.mapping_task, arglist)
-        
-            #for nu, element_index in results: # do we know how long block will be at each nu? 
-            for result in results:
-                if result is None:
-                    continue
-                # try to avoid this?
-                self.mapping_block[result[0]].append(result[1])
-                self.elements_block[result[0]].append(result[2])
-            
 
-        else: # serial version
+        new_version = True
+        
+        if new_version:
+            for count in range(num_elements):
+                element = self.indices_elements[count]
+                left = element[0:self.nspins]
+                right = element[self.nspins:2*self.nspins]
+                m_left = self.nspins-sum(left)
+                m_right = self.nspins-sum(right)
+                nu_min = max(m_left, m_right) # can't have fewer than m_left+0 photons (or m_right+0photons) excitations
+                for nu in range(nu_min, nu_max+1):
+                    count_p1 = nu - m_left
+                    count_p2 = nu - m_right
+                    element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
+                    el = np.concatenate(([count_p1], left, [count_p2], right))
+                    self.mapping_block[nu].append(element_index)
+                    self.elements_block[nu].append(el)
+            # Re-order to match that of earlier implementations
+            for nu in range(nu_max+1):
+                # zip-sort-zip - a personal favourite Python One-Liner
+                self.mapping_block[nu], self.elements_block[nu] =\
+                        zip(*sorted(zip(self.mapping_block[nu], self.elements_block[nu])))
+        else: # OLD serial version - remove this SOON
             for count_p1 in range(self.ldim_p):
                 for count_p2 in range(self.ldim_p):
                     for count in range(num_elements):
@@ -207,8 +187,7 @@ class Indices:
                         element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
                         left = element[0:self.nspins]
                         right = element[self.nspins:2*self.nspins]
-                        
-                        # calculate excitations. Important: ZEOR MEANS SPIN UP, ONE MEANS SPIN DOWN.
+                        # calculate excitations. Important: ZERO MEANS SPIN UP, ONE MEANS SPIN DOWN.
                         m_left = self.nspins-sum(left)
                         m_right = self.nspins-sum(right)
                         # calculate nu
@@ -218,8 +197,6 @@ class Indices:
                             el = np.concatenate(([count_p1], left, [count_p2],right))
                             self.mapping_block[nu_left].append(element_index)
                             self.elements_block[nu_left].append(el)
-
-    
     
     def _to_hilbert(self,combined):
         """convert to Hilbert space index"""
@@ -315,6 +292,7 @@ class BlockL:
             # if not, calculate them
             t0 = time()
             if parallel==2:
+                raise NotImplemented
                 print('Calculating normalized L parallel2 ...')
                 self.setup_L_block_basis_parallel2(indices)
             elif parallel==1:
@@ -515,8 +493,10 @@ class BlockL:
     @staticmethod
     def calculate_L0_line(args_tuple):
         """ Calculate L0 part of element count_in in block nu_element """
-        nspins, current_blocksize, current_element_block, count_in = args_tuple
-        
+        nu_element, count_in = args_tuple
+
+        current_element_block = elements_block[nu_element]
+        current_blocksize = len(current_element_block)
         # get element, of which we want the time derivative
         element = current_element_block[count_in]
         left = element[0:nspins+1] # left state, first index is photon number, rest is spin states
@@ -619,23 +599,23 @@ class BlockL:
         """ Calculate L1 part of element count_in in block nu_element """
         
         #indices,count_in, nu_element = args_tuple
-        nspins, current_blocksize, next_blocksize, current_element, next_element_block, nu_element = args_tuple
+        nu_element, count_in = args_tuple
         
-        #current_blocksize = len(mapping_block[nu_element])
-        #next_blocksize = len(mapping_block[nu_element+1])
-    
         # get element, of which we want the time derivative
-        #element = indices.elements_block[nu_element][count_in]
-        #element = element_block[count_in]
+        current_element = elements_block[nu_element][count_in]
+        current_blocksize = len(elements_block[nu_element])
+    
         left = current_element[0:nspins+1] # left state, first index is photon number, rest is spin states
         right = current_element[nspins+1:2*nspins+2] # right state
             
-        # initialize L1 rows
-        L1_line = {'sigmam': np.zeros((1, next_blocksize), dtype=complex),
-                  'a': np.zeros((1, next_blocksize), dtype=complex)}
         
         # Now get L1 part -> coupling from nu_element to nu_element+1
         # loop through all matrix elements in the next block we want to couple to
+        next_element_block = elements_block[nu_element+1]
+        next_blocksize = len(elements_block[nu_element+1])
+        # initialize L1 rows
+        L1_line = {'sigmam': np.zeros((1, next_blocksize), dtype=complex),
+                  'a': np.zeros((1, next_blocksize), dtype=complex)}
         for count_out in range(next_blocksize):
             # get "to couple" element
             element_to_couple = next_element_block[count_out]
@@ -693,21 +673,16 @@ class BlockL:
                          'a': np.zeros((current_blocksize, next_blocksize), dtype=complex)}
 
            
-           arglist0 = []
-           arglist1 = []
+           arglist = []
+           global nspins, elements_block
            nspins  = indices.nspins
+           elements_block = indices.elements_block
+        #nu_element, count_in = args_tuple
            for count_in in range(current_blocksize):
-               current_element_block = indices.elements_block[nu_element]
-               nspins, arglist0.append((nspins, current_blocksize, current_element_block, count_in))
-               if nu_element < num_blocks - 1:
-                   next_blocksize = len(indices.mapping_block[nu_element+1])
-                   current_element = current_element_block[count_in]
-                   next_element_block = indices.elements_block[nu_element+1]
-                   arglist1.append((nspins, current_blocksize, next_blocksize, current_element, \
-                       next_element_block, nu_element))
+               arglist.append((nu_element, count_in))
            #print(f'Block {nu_element}/{num_blocks}: {len(arglist)} args')
            with Pool() as pool:
-               list_of_lines = pool.map(self.calculate_L0_line, arglist0)
+               list_of_lines = pool.map(self.calculate_L0_line, arglist)
            
 
            for name in L0_new:
@@ -717,7 +692,7 @@ class BlockL:
            
            if nu_element < num_blocks -1:
                with Pool() as pool:
-                   list_of_lines = pool.map(self.calculate_L1_line, arglist1)
+                   list_of_lines = pool.map(self.calculate_L1_line, arglist)
 
                for name in L1_new:
                    for count_in in range(current_blocksize):
@@ -785,10 +760,6 @@ class BlockL:
         
         return L1_new
 
-        
-        
-        
-    
     def setup_L_block_basis_parallel2(self, indices):
        """ Calculate Liouvillian basis in block form. Parallelized the calculation
        of each block"""
@@ -816,9 +787,7 @@ class BlockL:
        for name in self.L1_basis:
            for nu in range(num_blocks-1):
                self.L1_basis[name].append(L1s[nu][name])
-           
 
-           
        print('done')
        
        
@@ -938,9 +907,6 @@ class BlockDicke(BlockL):
         self.setup_L(indices)
         elapsed = time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
-
-        
-
 
     def setup_L(self, indices):
         """ From the basic parts of the Liouvillian, get the whole Liouvillian
