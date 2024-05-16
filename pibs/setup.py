@@ -933,7 +933,14 @@ class BlockDicke(BlockL):
         self.L1 = []
         super().__init__(indices, parallel,debug)
         
+        t0 = time()
+        print('Calculating Liouvillian from basis...', flush =True)
         self.setup_L(indices)
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+
+        
+
 
     def setup_L(self, indices):
         """ From the basic parts of the Liouvillian, get the whole Liouvillian
