@@ -113,6 +113,7 @@ class TimeEvolve():
         
         # initialize rho
         rho = np.zeros((blocksize, chunksize), dtype = complex)
+        t = []
         
         # integrator
         r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol)
@@ -121,15 +122,20 @@ class TimeEvolve():
         # integrate
         if store_initial:
             rho[:,0] = rho0
+            t.append(t0)
             n_t = 1
         else:
             n_t=0
         while r.successful() and n_t < chunksize:
             rho_step = r.integrate(r.t+self.dt)
             rho[:,n_t] = rho_step
+            t.append(r.t)
+            # reset integrator
+            r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol).set_initial_value(r.y,r.t).set_f_params(self.L.L0[nu_max])
+            
             n_t += 1
             
-        return rho
+        return rho,t
     
     
     def evolve_nu(self, rho0_nu, rho_nup1, t0, nu, chunksize, store_initial):
@@ -166,16 +172,16 @@ class TimeEvolve():
             n_t = 1
         else:
             n_t=0
-        n_nup1 = 1
+        n_nup1 = 1 #
         while r.successful() and n_t<chunksize:
             rho_step = r.integrate(r.t+self.dt)
             rho_nu[:, n_t] = rho_step
             
-            # update integrator in n_up1 smaller than chunksize
+            # update integrator if n_up1 smaller than chunksize
             if n_nup1 < chunksize:
                 r = ode(_intfunc_block).set_integrator('zvode', method = 'bdf',
                         atol=self.atol, rtol=self.rtol).set_initial_value(r.y,r.t).set_f_params(self.L.L0[nu],self.L.L1[nu],rho_nup1[:,n_nup1])
-                n_nup1 = n_nup1+1
+                n_nup1 += 1
             n_t += 1
         return rho_nu
     
@@ -343,7 +349,7 @@ class TimeEvolve():
         print(f'Complete {elapsed:.0f}s', flush=True)
         
     
-    def time_evolve_chunk(self, expect_oper, chunksize = 50, progress=False):
+    def time_evolve_chunk(self, expect_oper, chunksize = 50, progress=False, save_states=False):
         """ Parallelize and minimize the amount of stored states """
         if expect_oper == None:
             self.time_evolve_block(save_states=True, progress=progress)
@@ -358,13 +364,17 @@ class TimeEvolve():
         t0 = 0
         ntimes = int(self.tend/self.dt)+1
         
-        
+        if save_states:
+            self.result.rho = [[] for _ in range(num_blocks)]
+
         # setup rhos as double the chunksize, such that there is space for one chunk for feedforward,
         # and one chunk for calculating the future time evolution.
-        rhos_chunk = [np.zeros((len(self.indices.mapping_block[i]),2*chunksize), dtype=complex) for i in range(num_blocks)] 
+        saved_chunks=3 # number of stored chunks 
+        rhos_chunk = [np.zeros((len(self.indices.mapping_block[i]),saved_chunks*chunksize), dtype=complex) for i in range(num_blocks)] 
         
         # keep track, where to write and where to read for each block
         write = [0] * len(self.indices.mapping_block) # zero means, write in first chunk. One means, write in second chunk
+        rho_lengths = np.zeros(num_blocks) # keep track of how many timesteps have been evaluated for each nu
             
         # initial states for each block. Needs to be updated after each chunk calculation
         initial = [np.copy(self.rho.initial[nu]) for nu in range(num_blocks)]
@@ -377,10 +387,13 @@ class TimeEvolve():
         
         # The calculation for block nu can only be started after (nu_max-nu) chunks.
         # total computation steps: ntimes + (nu_max-1) * chunksize
-        while count * chunksize - (nu_max-1)*chunksize < ntimes:    # - (nu_max-1)*chunktimes, because the nu blocks have to be solved with a time delay      
+        while count * chunksize - (nu_max)*chunksize <= ntimes:    # - (nu_max)*chunktimes, because the nu blocks have to be solved with a time delay      
             # first calculate block nu_max
-            t0_numax = t0+count*chunksize*self.dt
-            
+            if count == 0:
+                t0_numax = t0+count*chunksize*self.dt
+            else: 
+                t0_numax = t0+count*chunksize*self.dt - self.dt # because only in the first chunk, the initial condition does not need to be stored again. 
+                                                                # The initial condition of second chunk is the last time of the previous chunk
             # only calculate time evolution, if tend has not been reached yet
             if t0_numax <= self.tend:
                 # In the initial chunk, save the initial state. Otherwise, don't save initial state,
@@ -390,9 +403,16 @@ class TimeEvolve():
                 else:
                     save_initial = False
                     
-                # do the time evolution and store it in the appropriate indices of rho_chunk     
-                rhos_chunk[nu_max][:,write[nu_max]*chunksize:(write[nu_max]+1)*chunksize] =(
-                    self.evolve_numax(initial[nu_max], t0_numax, chunksize, save_initial))
+                # do the time evolution and store it in the appropriate indices of rho_chunk
+                newchunk, tchunk = self.evolve_numax(initial[nu_max], t0_numax, chunksize, save_initial)
+                rhos_chunk[nu_max][:,write[nu_max]*chunksize:(write[nu_max]+1)*chunksize] = newchunk
+
+                if save_states:
+                    for i in range(chunksize):
+                        if rho_lengths[nu_max] < ntimes:
+                            arr = np.array(newchunk[:,i])
+                            self.result.rho[nu_max].append(arr)
+                            rho_lengths[nu_max]+=1
                 # update initial value for next chunk
                 initial[nu_max] = rhos_chunk[nu_max][:,(write[nu_max]+1) * chunksize-1]
 
@@ -409,7 +429,7 @@ class TimeEvolve():
                     i = i+1
                 
                 # update write variable
-                write[nu_max] = (write[nu_max] + 1) % 2 # if 1 make it 0, if 0 make it 1
+                write[nu_max] = (write[nu_max] + 1) % saved_chunks # if 1 make it 0, if 0 make it 1
                 x = rhos_chunk[nu_max][:,:]     
                 y = self.result.expect                                  
 
@@ -418,16 +438,42 @@ class TimeEvolve():
             parallel_blocks = min(count+1, num_blocks) 
             
             # repeat what has been done already for nu_max
-            for nu in range(nu_max -1,nu_max - parallel_blocks, -1):              
-                t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt
-                
+            for nu in range(nu_max -1,nu_max - parallel_blocks, -1):
+                if count - (nu_max - nu) == 0:
+                    # for the first chunk, the initial value is already given, so we do not need to calculate them again
+                    # that is why t0 and feedforward are shifted by one
+                    t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt
+                    feedforward = rhos_chunk[nu+1][:,write[nu] * chunksize:(write[nu]+1)*chunksize]
+                else:
+                    # for all but the first chunk, the initial conditions are stored in the previous chunk,
+                    # so the initial conditions are shifted by one timestep
+                    t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt-self.dt
+                    
+                    # since we store the rho results in an array of length chunksize*saved_chunks, the following can happen:
+                    # We want to feedforward the last saved chunk from nu=1, to calculate nu=0. The last saved chunk in nu=1 is in the
+                    # first slot of rhos_chunk, meaning the initial rho_nu=1 for nu=0 is actually the last element of the rhos_chunk array.
+                    start_idx = write[nu] * chunksize-1
+                    end_idx = (write[nu]+1)*chunksize-1
+                    
+                    if start_idx < 0: # when it is negative 1
+                        feedforward = np.array(rhos_chunk[nu+1][:, -1:])
+                        feedforward = np.concatenate((feedforward, rhos_chunk[nu+1][:,start_idx+1:end_idx]),axis=1)
+                    else:
+                        feedforward = rhos_chunk[nu+1][:,write[nu] * chunksize-1:(write[nu]+1)*chunksize-1]
+                #print(nu, count-nu_max+nu)
                 if t0_nu <= self.tend:
                     if count - (nu_max-nu) == 0:
                         save_initial = True
                     else:
                         save_initial = False
-                    rhos_chunk[nu][:, write[nu] * chunksize:(write[nu]+1)*chunksize] = (
-                        self.evolve_nu(initial[nu],rhos_chunk[nu+1][:,write[nu] * chunksize:(write[nu]+1)*chunksize], t0_nu, nu, chunksize, save_initial))
+                    newchunk = self.evolve_nu(initial[nu],feedforward, t0_nu, nu, chunksize, save_initial)
+                    rhos_chunk[nu][:, write[nu] * chunksize:(write[nu]+1)*chunksize] = newchunk
+                    if save_states:
+                        for i in range(chunksize):
+                            if rho_lengths[nu] < ntimes:
+                                arr = np.array(newchunk[:,i])
+                                self.result.rho[nu].append(arr)
+                                rho_lengths[nu] += 1
                     # update initial value for next chunk
                     initial[nu] = rhos_chunk[nu][:,(write[nu]+1) * chunksize-1]
                     
@@ -441,7 +487,7 @@ class TimeEvolve():
                             np.array(self.expect_comp_block([rhos_chunk[nu][:,read_index+ i]],nu, expect_oper)).flatten())
                         i = i+1
                     # update write variable
-                    write[nu] = (write[nu] + 1) % 2 # if 1 make it 0, if 0 make it 1
+                    write[nu] = (write[nu] + 1) % saved_chunks # if 1 make it 0, if 0 make it 1
 
             count = count+1
 
@@ -493,6 +539,10 @@ class TimeEvolve():
             rho = r.integrate(r.t+self.dt)
             self.result.t.append(r.t)
             rhos[nu].append(rho)
+            
+            # reset integrator
+            r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol).set_initial_value(r.y,r.t).set_f_params(self.L.L0[nu])
+            
             n_t += 1
             
             if progress:
