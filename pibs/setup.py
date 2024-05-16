@@ -32,7 +32,7 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True):
+    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, parallel=True, debug=False):
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
             raise ValueError("Number of spins must be integer N > 0")
@@ -56,7 +56,7 @@ class Indices:
         index_path = 'data/indices/'
         index_files = os.listdir(index_path)
         filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
-        if (any([f == filename for f in index_files])):
+        if (any([f == filename for f in index_files])) and not debug:
             self.load(index_path+filename)
         else:
             
@@ -70,7 +70,7 @@ class Indices:
             # setup mapping block
             print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
             t0 = time()
-            self.setup_mapping_block(parallel=True)
+            self.setup_mapping_block(parallel)
             elapsed = time()-t0
             print(f'Complete {elapsed:.0f}s', flush=True)
             
