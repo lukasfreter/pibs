@@ -288,23 +288,22 @@ class BlockL:
         filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
         if (any([f == filename for f in liouv_files])) and not debug:
             self.load(liouv_path+filename, indices)
-        else:
-            # if not, calculate them
-            t0 = time()
-            if parallel==2:
-                raise NotImplemented
-                print('Calculating normalized L parallel2 ...')
-                self.setup_L_block_basis_parallel2(indices)
-            elif parallel==1:
-                print('Calculating normalized L parallel ...')
-                self.setup_L_block_basis_parallel(indices)
-            elif parallel ==0:
-                print('Calculating normalized L serial ...')
-                self.setup_L_block_basis(indices)
-            elapsed = time()-t0
-            print(f'Complete {elapsed:.0f}s', flush=True)
-            # export normalized Liouvillians for later use
-            self.export(liouv_path+filename)
+            return
+        # if not, calculate them
+        t0 = time()
+        pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)'}
+        pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
+                 2: self.setup_L_block_basis_parallel2}
+        try:
+            print(f'Calculating normalised {pname[parallel]}...')
+            pfunc[parallel](indices)
+        except KeyError as e:
+            print('Argument parallel={parallel} not recognised')
+            raise e
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+        # export normalized Liouvillians for later use
+        self.export(liouv_path+filename)
         
         
     
@@ -720,10 +719,9 @@ class BlockL:
             
     
     
-    def L0_nu_task(self, args_tuple):
-        indices, nu_element = args_tuple
-        num_blocks = len(indices.mapping_block)
-        current_blocksize = len(indices.mapping_block[nu_element])
+    @staticmethod
+    def L0_nu_task(nu_element):
+        current_blocksize = len(elements_block[nu_element])
         # setup the Liouvillians for the current block
 
         L0_new ={'sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
@@ -735,7 +733,7 @@ class BlockL:
         
         
         for count_in in range(current_blocksize):
-            L0_line = self.calculate_L0_line((indices, count_in, nu_element))
+            L0_line = BlockDicke.calculate_L0_line((nu_element, count_in))
             
             for name in L0_new:
                 L0_new[name][count_in,:] = L0_line[name]
@@ -743,18 +741,16 @@ class BlockL:
         return L0_new
 
                 
-                
-    def L1_nu_task(self, args_tuple):
-        indices, nu_element = args_tuple
-        num_blocks = len(indices.mapping_block)
-        current_blocksize = len(indices.mapping_block[nu_element])
-        next_blocksize = len(indices.mapping_block[nu_element+1])
+    @staticmethod     
+    def L1_nu_task(nu_element):
+        current_blocksize = len(elements_block[nu_element])
+        next_blocksize = len(elements_block[nu_element+1])
         L1_new = {'sigmam': np.zeros((current_blocksize, next_blocksize), dtype=complex),
                   'a': np.zeros((current_blocksize, next_blocksize), dtype=complex)}
 
         
         for count_in in range(current_blocksize):
-            L1_line = self.calculate_L1_line((indices, count_in, nu_element))
+            L1_line = BlockDicke.calculate_L1_line((nu_element, count_in))
             for name in L1_new:
                 L1_new[name][count_in,:] = L1_line[name]
         
@@ -764,25 +760,23 @@ class BlockL:
        """ Calculate Liouvillian basis in block form. Parallelized the calculation
        of each block"""
        num_blocks = len(indices.mapping_block)
+       global nspins, elements_block
+       nspins  = indices.nspins
+       elements_block = indices.elements_block
        
        # loop through all elements in block structure
-       arglist = []
-       for nu in range(num_blocks):
-           arglist.append((indices, nu))
+       arglist = [nu for nu in range(num_blocks)]
        
-       with Pool(14) as pool:
+       with Pool() as pool:
            L0s = pool.map(self.L0_nu_task, arglist)
        
        for name in self.L0_basis:
            for nu in range(num_blocks):
                self.L0_basis[name].append(L0s[nu][name])
        
-       
-       arglist = []
-       for nu in range(num_blocks-1):
-           arglist.append((indices, nu))
-       with Pool(14) as pool:
-           L1s = pool.map(self.L1_nu_task,arglist)
+       arglist = arglist[:-1] # not nu_max 
+       with Pool() as pool:
+           L1s = pool.map(self.L1_nu_task, arglist)
            
        for name in self.L1_basis:
            for nu in range(num_blocks-1):
