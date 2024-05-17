@@ -51,6 +51,8 @@ class Indices:
         self.indices_elements_inv = {}
         self.mapping_block = []
         self.elements_block = []
+        self.difference_block = []
+        self.difference_block_inv = []
         
         # check if an object with the same arguments already exists in data/indices/ folder
         index_path = 'data/indices/'
@@ -90,7 +92,7 @@ class Indices:
         #get minimal list of left and right spin indices (in combined form)
         spins = self.setup_spin_indices()
         
-        left =[]
+        left = []
         right = []
         
         #split combined indices into left/right form
@@ -103,7 +105,7 @@ class Indices:
         left = array(left)
         right = array(right)
 
-        #loop over each photon state and each spin configuration
+        #loop over each spin configuration
         for count in range(len(spins)):
             #calculate element and index 
             element = concatenate((left[count], right[count]))
@@ -156,47 +158,38 @@ class Indices:
         
         self.mapping_block = [ [] for _ in range(nu_max+1)] # list of nu_max+1 empty lists
         self.elements_block = [ [] for _ in range(nu_max+1)]
+        self.difference_block = [ [] for _ in range(nu_max+1)] # used to create difference_block_inv
+        self.difference_block_inv = {nu:[] for nu in range(nu_max+1)} # useful for rdm conversion matrix calculations
 
-        new_version = True
-        
-        if new_version:
-            for count in range(num_elements):
-                element = self.indices_elements[count]
-                left = element[0:self.nspins]
-                right = element[self.nspins:2*self.nspins]
-                m_left = self.nspins-sum(left)
-                m_right = self.nspins-sum(right)
-                nu_min = max(m_left, m_right) # can't have fewer than m_left+0 photons (or m_right+0photons) excitations
-                for nu in range(nu_min, nu_max+1):
-                    count_p1 = nu - m_left
-                    count_p2 = nu - m_right
-                    element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
-                    el = np.concatenate(([count_p1], left, [count_p2], right))
-                    self.mapping_block[nu].append(element_index)
-                    self.elements_block[nu].append(el)
-            # Re-order to match that of earlier implementations
-            for nu in range(nu_max+1):
-                # zip-sort-zip - a personal favourite Python One-Liner
-                self.mapping_block[nu], self.elements_block[nu] =\
-                        zip(*sorted(zip(self.mapping_block[nu], self.elements_block[nu])))
-        else: # OLD serial version - remove this SOON
-            for count_p1 in range(self.ldim_p):
-                for count_p2 in range(self.ldim_p):
-                    for count in range(num_elements):
-                        element = self.indices_elements[count]
-                        element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
-                        left = element[0:self.nspins]
-                        right = element[self.nspins:2*self.nspins]
-                        # calculate excitations. Important: ZERO MEANS SPIN UP, ONE MEANS SPIN DOWN.
-                        m_left = self.nspins-sum(left)
-                        m_right = self.nspins-sum(right)
-                        # calculate nu
-                        nu_left = m_left + count_p1
-                        nu_right = m_right + count_p2
-                        if nu_left == nu_right and nu_left <= nu_max:                   
-                            el = np.concatenate(([count_p1], left, [count_p2],right))
-                            self.mapping_block[nu_left].append(element_index)
-                            self.elements_block[nu_left].append(el)
+        for count in range(num_elements):
+            element = self.indices_elements[count]
+            left = element[0:self.nspins]
+            right = element[self.nspins:2*self.nspins]
+            m_left = self.nspins-sum(left)
+            m_right = self.nspins-sum(right)
+            num_diff = sum(left != right)
+            nu_min = max(m_left, m_right) # can't have fewer than m_left+0 photons (or m_right+0photons) excitations
+            for nu in range(nu_min, nu_max+1):
+                count_p1 = nu - m_left
+                count_p2 = nu - m_right
+                element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
+                el = np.concatenate(([count_p1], left, [count_p2], right))
+                # can't use inverse here we sort the mapping block below :(
+                #self.difference_block_inv[num_diff].append((nu, len(self.mapping_block[nu])))
+                self.mapping_block[nu].append(element_index)
+                self.elements_block[nu].append(el)
+                self.difference_block[nu].append(num_diff)
+        # Re-order to match that of earlier implementations
+        for nu in range(nu_max+1):
+            # zip-sort-zip - a personal favourite Python One-Liner
+            self.mapping_block[nu], self.elements_block[nu], \
+            self.difference_block[nu] =\
+                    zip(*sorted(zip(self.mapping_block[nu],
+                                    self.elements_block[nu],
+                                    self.difference_block[nu])))
+            # have to populate inv AFTER sort
+            for i, num_diff in enumerate(self.difference_block[nu]):
+                self.difference_block_inv[num_diff].append((nu, i))
     
     def _to_hilbert(self,combined):
         """convert to Hilbert space index"""
@@ -932,13 +925,13 @@ class Rho:
         Calculation of expectation values
     """
         
-    def __init__(self, rho_p, rho_s, indices, nrs=1):
-        assert type(nrs) == int, "Argument 'nrs' must be int"
-        assert nrs >= 0, "Argument 'nrs' must be non-negative"
-        assert indices.nspins >= nrs, "Number of spins in reduced density matrix ({}) cannot "\
-                "exceed total number of spins ({})".format(nrs, indices.nspins)
+    def __init__(self, rho_p, rho_s, indices, max_nrs=1):
+        assert type(max_nrs) == int, "Argument 'max_nrs' must be int"
+        assert max_nrs >= 0, "Argument 'max_nrs' must be non-negative"
+        assert indices.nspins >= max_nrs, "Number of spins in reduced density matrix "\
+                "(max_nrs) cannot exceed total number of spins ({indices.nspins})"
         
-        self.nrs = nrs # number of spins in reduced density matrix
+        self.max_nrs = max_nrs # maximum number of spins in reduced density matrix
         self.indices = indices
         self.convert_rho_block_dic = {}
         self.initial= []
@@ -946,17 +939,18 @@ class Rho:
         
         # setup initial state
         t0 = time()
-        print('Set up initial and reduced density matrix...')
+        print('Set up initial density matrix...')
         self.initial = self.setup_initial(rho_p, rho_s)
         
         # setup reduced density matrix
-        self.setup_convert_rho_block_nrs()
+        print('Set up mappings to reduced density matrices at...')
+        for nrs in range(max_nrs+1):
+            print(f'nrs = {nrs}...')
+            self.setup_convert_rho_block_nrs(nrs)
         elapsed= time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
-        
-        
     
-    def setup_initial(self,rho_p, rho_s):
+    def setup_initial(self, rho_p, rho_s):
         """Calculate the block representation of the initial state 
         with photon in state rho_p and all spins in state rho_s"""
         indices = self.indices
@@ -990,146 +984,123 @@ class Rho:
         
         return rho_vec_block   
     
-    def setup_convert_rho_block_nrs(self):
-        indices = self.indices
-        # Setup reduced density matrix
-        nrs, ldim_s, ldim_p = self.nrs, indices.ldim_s, indices.ldim_p
-        indices_elements, nspins = indices.indices_elements, indices.nspins
-        num_blocks = len(indices.mapping_block)
-        num_elements = [len(block) for block in indices.mapping_block]
-        nu_max = num_blocks - 1
+    def setup_convert_rho_block_nrs(self, nrs):
+        """Setup conversion matrix from supercompressed vector to vector form of
+        reduced density matrix of the photon plus nrs (possibly 0) spins
 
+        N.B. Takes advantage of counts of how many spins are different between
+        ket (left) and bra (right) for a state with a given excitation nu and
+        block_index, as stored in indices.different_block_inv
+
+        Fills in self.convert_rho_block_dic with an entry with key nrs
+        """
+        indices = self.indices
+        nspins = indices.nspins
+        num_elements = [len(block) for block in indices.mapping_block]
+
+        # initialise empty matrices for each block of the supercompressed form
         convert_rho_block = [
-                sp.lil_matrix(((ldim_p*ldim_s**nrs)**2, num), dtype=float)
+                sp.lil_matrix(((indices.ldim_p*indices.ldim_s**nrs)**2, num), dtype=float)
                 for num in num_elements
                 ]
 
-        self.convert_rho_block_dic[nrs] = convert_rho_block
+        self.convert_rho_block_dic[nrs] = convert_rho_block # modified in place 
 
-        for count_p1 in range(ldim_p):
-            for count_p2 in range(ldim_p):
-                for count in range(len(indices_elements)):
-                    left = indices_elements[count][0:nspins]
-                    right = indices_elements[count][nspins:2*nspins]
-                    m_left = nspins-sum(left)
-                    m_right = nspins-sum(right)
-                    nu_left = m_left + count_p1
-                    nu_right = m_right + count_p2
-                    if nu_left != nu_right or nu_left > nu_max:                   
-                        continue
-                    nu = nu_left
-                    diff_arg = np.asarray(left != right).nonzero()[0] # indices where bra and ket differ (axis=0)
-                    diff_num = len(diff_arg) # number of different spin elements
-                    if diff_num > nrs:
-                        continue
-                    diff_left = left[diff_arg]
-                    diff_right = right[diff_arg]
-                    same = np.delete(left, diff_arg) # common elements
-                    element_index = ldim_p*len(indices_elements)*count_p1 + len(indices_elements)*count_p2 + count
-                    block_element_index = next((i for i, index in enumerate(indices.mapping_block[nu]) if index == element_index), None)
-                    if block_element_index is None:
-                        print('CRITICAL: mapping_block at nu={nu} is no index {element_index}!')
-                        sys.exit(1)
-                    # fill all matrix elements in column element_index according to different and same spins
-                    self.add_all_block(nrs, nu, count_p1, count_p2, diff_left, diff_right, same, block_element_index)
-        #for nu in range(num_blocks):
-        #    #for element_index in mapping_block[nu]:
-        #        #if element_index
-        #    for count in range(len(indices_elements)):
-        #        left = indices_elements[count][0:nspins]
-        #        right = indices_elements[count][nspins:2*nspins]
-        #        count_p1 = nu - (nspins - sum(left)) # number of photons in left
-        #        count_p2 = nu - (nspins - sum(right)) # number of photons in right
-        #        if count_p1 < 0 or count_p2 < 0 or count_p1 > nu_max or count_p2 > nu_max:
-        #            print(f'photon count incompatible with nu={nu}!')
-        #            continue
-        #        element_index = ldim_p*len(indices_elements)*count_p1 + len(indices_elements)*count_p2 + count
-        #        if element_index not in mapping_block[nu]:
-        #            print(f'{element_index} not in mapping block at nu={nu}!')
-        #            continue
-        #        diff_arg = np.asarray(left != right).nonzero()[0] # indices where bra and ket differ (axis=0)
-        #        diff_num = len(diff_arg) # number of different spin elements
-        #        if diff_num > nrs:
-        #            continue
-        #        # get elements that differ
-        #        diff_left = left[diff_arg]
-        #        diff_right = right[diff_arg]
-        #        same = np.delete(left, diff_arg) # common elements
-        #        element_index = count
-        #        # fill all matrix elements in column element_index according to different and same spins
-        #        add_all_block(nrs, nu, count_p1, count_p2, diff_left, diff_right, same, element_index)
-        
+        # for reduced density matrix involving nrs spins, must consider elements
+        # with a most nrs differences between ket (left) and bra (right) spin
+        # states
+        for num_diff in range(nrs+1):
+            # difference_block_inv has a tuple (nu, block_index) describing all the
+            # block elements and indices with a given num_diff differences
+            block_element_tuples = indices.difference_block_inv[num_diff]
+            for nu, block_index in block_element_tuples:
+                # to calculation contribution to rdm, we need element
+                element = indices.elements_block[nu][block_index]
+                count_p1, left, count_p2, right = \
+                        element[0], element[1:nspins+1], element[nspins+1], element[nspins+2:] 
+                diff_arg = (left != right).nonzero()[0] # location of spins with different ket, bra states 
+                same = np.delete(left, diff_arg) # spins with states same in ket and bra
+                self.add_all_for_block_element(nrs, nu, block_index,
+                                               count_p1, left[diff_arg],
+                                               count_p2, right[diff_arg],
+                                               same)
         convert_rho_block = [block.tocsr() for block in convert_rho_block]
-
-        return convert_rho_block
     
-    
-    def add_all_block(self, nrs, nu, count_p1, count_p2, left, right, same, block_element_index, s_start=0):
-        """Populate all entries in conversion_matrix with row indices associated with permutations of spin values
-        |left> and <right| and column index element_index according to the number of permutations of spin values in 
-        'same'.
+    def add_all_for_block_element(self, nrs, nu, block_index,
+                                  count_p1, left, count_p2, right, same, 
+                                  s_start=0):
+        """Populate all entries in conversion matrix at nu with reduced density matrix indices
+        associated with permutations of spin values |left> and <right| and column index
+        block_index, according to the number of permutations of spin values in 'same'.
 
         nrs is the number of spins in the target reduced density matrix ('number reduced spins').
         """
         if len(left) == nrs:
-            # add contributions from same to rdm at |bra><ket|
-            self.add_to_convert_rho_block_dic(nrs, nu, count_p1, count_p2,
-                                         left, right, same, block_element_index)
-            return
-        # current |left> too short for rdm, so move element from same to |left> (and <right|)
+            # add contributions from 'same' to rdm at |left><right|
+            self.add_to_convert_rho_block_dic(nrs, nu, block_index,
+                                              count_p1, left,
+                                              count_p2, right,
+                                              same)
+            return # end of recursion
+        # current |left> too short for rdm, so move element from 'same' to |left> (and <right|)
         # iterate through all possible values of spin...
         for s in range(s_start, self.indices.ldim_s):
             s_index = next((i for i,sa in enumerate(same) if sa==s), None)
-            # ...but only act on the spins that are actually in same
+            # ...but only act on the spins that are actually in 'same'
             if s_index is None:
                 continue
-            # extract spin value from same, append to bra and ket
+            # extract spin value from same, append to left and right
             tmp_same = np.delete(same, s_index)
             tmp_left = np.append(left, s)
             tmp_right = np.append(right, s)
             # repeat until |left> and <right| are correct length for rdm
-            self.add_all_block(nrs, nu, count_p1, count_p2, tmp_left, tmp_right, tmp_same, block_element_index, s_start=s)
+            self.add_all_for_block_element(nrs, nu, block_index,
+                                           count_p1, tmp_left,
+                                           count_p2, tmp_right,
+                                           tmp_same, s_start=s) # can skip up to s in next function call
     
-    def add_to_convert_rho_block_dic(self,nrs, nu, count_p1, count_p2, diff_left, diff_right, same, block_element_index):
+    def add_to_convert_rho_block_dic(self, nrs, nu, block_index,
+                                     count_p1, diff_left,
+                                     count_p2, diff_right,
+                                     same):
+        """Calculate contribution to reduced density matrix element with spin state
+        |diff_left><diff_right| (photon |count_p1><count_p1|) according to free
+        permutations of 'same' """
         convert_rho_block = self.convert_rho_block_dic[nrs]
-        # number of permutations of spins in same, each of which contributes one unit 
+        # number of permutations of spins in same, each of which contributes one unit under trace 
         combinations = _multinominal(np.bincount(same))
-        row_indices = self.get_all_row_indices(count_p1, count_p2, diff_left, diff_right)
-        for row_index in row_indices:
-            convert_rho_block[nu][row_index, block_element_index] = combinations
-            
-    def get_all_row_indices(self,count_p1, count_p2, spin_bra, spin_ket):
-        """Get all row indices of the conversion matrix corresponding to |count_p1><count_p2|
-        for the photon state and |diff_bra><diff_ket| for the spin states."""
-        assert len(spin_bra)==len(spin_ket)
-        nrs = len(spin_bra)
+        # get all vectorised reduced density matrix indices for element
         s_indices = np.arange(nrs)
-        row_indices = []
+        rdm_indices = []
         for perm_indices in permutations(s_indices):
+            # spins in rdm are still identical, so need to populate elements are
+            # all rdm indices associated with permutations of the nrs spins (?)
             index_list = list(perm_indices)
-            row_indices.append(self.get_rdm_index(count_p1, count_p2,
-                                             spin_bra[index_list],
-                                             spin_ket[index_list]))
-        return row_indices
-    
-    def get_rdm_index(self,count_p1, count_p2, spin_bra, spin_ket):
-        """Calculate row index in conversion matrix for element |count_p1><count_p2| for the 
-        photon part and |spin_bra><spin_ket| for the spin part.
+            rdm_indices.append(self.get_rdm_index(count_p1, diff_left[index_list],
+                                                  count_p2, diff_right[index_list]))
+        for rdm_index in rdm_indices:
+            convert_rho_block[nu][rdm_index, block_index] = combinations
+            
+    def get_rdm_index(self, count_p1, left, count_p2, right):
+        """Calculate index in vectorised reduced density matrix 
+        for element |count_p1><count_p2|(X)|left><right|
 
-        This index is according to column-stacking convention used by qutip - see for example
+        This index is according to column-stacking convention used by qutip; see e.g.
 
         A=qutip.Qobj(numpy.arange(4).reshape((2, 2))
         print(qutip.operator_to_vector(A))
+
+        I can't remember writing this magic - pfw
         """
-        bra = np.concatenate(([count_p1],spin_bra))
-        ket = np.concatenate(([count_p2],spin_ket))
+        ket = np.concatenate(([count_p1], left))
+        bra = np.concatenate(([count_p2], right))
         row = 0
         column = 0
-        nrs = len(bra)-1
+        nrs = len(ket)-1
         for i in range(nrs+1):
             j = nrs-i
-            row += bra[j] * self.indices.ldim_s**i
-            column += ket[j] * self.indices.ldim_s**i
+            row += ket[j] * self.indices.ldim_s**i
+            column += bra[j] * self.indices.ldim_s**i
         return row + column * self.indices.ldim_p * self.indices.ldim_s**nrs
     
     
