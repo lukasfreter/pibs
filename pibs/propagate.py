@@ -7,6 +7,7 @@ from scipy.integrate import ode
 from scipy.interpolate import interp1d
 
 import multiprocessing
+from multiprocessing import shared_memory
 interp1 = []
 interp_chunk=[]
 
@@ -235,7 +236,7 @@ class TimeEvolve():
     
     
     @staticmethod 
-    def evolve_numax_parallel(dt, nu_max,chunksize,atol, rtol, write_queue):
+    def evolve_numax_parallel(nu_max,chunksize,atol, rtol, write_queue, shm_name,shape,dtype,lock):
         """
         Calculate the time evolution of the block nu_max of highest excitation number.
         Elements in this block only couple to other elements in this block.
@@ -254,80 +255,107 @@ class TimeEvolve():
         rho : time evolved density matrix
 
         """
-        global rhos
-        # initial values from global variables
-        rho0 = rhos[nu_max][:,0]
-        t0 = t[0]
-        ntimes = len(t)
-
         
-        # integrator
-        r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
-        r.set_initial_value(rho0,t0).set_f_params(L0[nu_max])
+        with lock:
+            # get shared rhos
+            existing_shm = shared_memory.SharedMemory(name=shm_name)
+            # Create a NumPy array using the shared memory
+            shared_rho = np.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
         
-        # integrate
-        n_t = 1
-        while r.successful() and n_t < ntimes:
-            #print(n_t, rhos[nu_max][:n_t-1])
-            rho_step = r.integrate(r.t+dt)
-            rhos[nu_max][:,n_t] = rho_step
-            t[n_t] = r.t
-            n_t += 1
             
-            # put data in queue if chunksize has been reached
-            if n_t % chunksize == 0:
-                write_queue.put(n_t-chunksize)
+            
+            # initial values from global variables
+            rho0 = shared_rho[:,0]
+            t0 = t[0]
+            dt = t[1]-t[0]
+            ntimes = len(t)
+    
+            
+            # integrator
+            r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
+            r.set_initial_value(rho0,t0).set_f_params(L0[nu_max])
+            
+            # integrate
+            n_t = 1
+            while r.successful() and n_t < ntimes:
+                #print(n_t, rhos[nu_max][:n_t-1])
+                rho_step = r.integrate(r.t+dt)
+                shared_rho[:,n_t] = rho_step
+                #t[n_t] = r.t
+                n_t += 1
                 
-        print(rhos[nu_max])
-        return rhos[nu_max]
+                # put data in queue if chunksize has been reached
+                if n_t % chunksize == 0:
+                    write_queue.put(n_t-chunksize+1)
+            existing_shm.close()
+
             
     @staticmethod
-    def evolve_nu_parallel(dt, nu, chunksize, atol,rtol, read_queue, write_queue):
+    def evolve_nu_parallel(nu, chunksize, atol,rtol, read_queue, write_queue, shm_name,shape,shm_name_ff, shape_ff, dtype,lock):
         """
         Time evolution of block nu, which can couple to block nu+1
         
         """
-
-        ntimes = len(t)
-        
-        FLAG_STOP=False
-
-        while FLAG_STOP is False:
-            data = read_queue.get()  # get will wait
-            if data is None:
-                # Finish analysis
-                FLAG_STOP = True
-            else:
-                # chunk nu+1 has been calculated -> calculate this chunk
-                
-                # initial values from global variables. data from read_queue should be the initial index in the rhos array
-                rho0_nu = rhos[nu][:,data]
-                t0 = t[data]
-                end_idx = data+chunksize
-                if end_idx > ntimes:
-                    end_idx = ntimes
-                rho_feedforward = rhos[nu+1][:,0:end_idx] # since we want to interpolate, it makes sense to always start from time index 0 !
-                t_ff = t[0:end_idx]
-                feedforward_func = interp1d(t_ff, rho_feedforward[:,0:len(t_ff)], bounds_error=False, fill_value='extrapolate') # interpolation function for feedforward
-                
-                # setup integrator
-                r = ode(_intfunc_block_interp).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
-                r.set_initial_value(rho0_nu, t0).set_f_params(L0[nu], L1[nu], feedforward_func)
-                
-                n_t=data
-                chunk_count = 0
-                while r.successful() and (n_t<ntimes and chunk_count < chunksize):
-                    print('HERE')
-                    rho_step = r.integrate(r.t+dt)
-                    rhos[nu][:, n_t] = rho_step         
-                    n_t += 1
-                    chunk_count += 1
+        with lock:
+            # get shared rhos
+            existing_shm = shared_memory.SharedMemory(name=shm_name)
+            # Create a NumPy array using the shared memory
+            shared_rho = np.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
+            
+            # feedforward
+            existing_shm_ff = shared_memory.SharedMemory(name=shm_name_ff)
+            # Create a NumPy array using the shared memory
+            shared_rho_ff = np.ndarray(shape_ff, dtype=dtype, buffer=existing_shm_ff.buf)
+            
+    
+            ntimes = len(t)
+            dt = t[1]-t[0]
+            
+            FLAG_STOP=False
+    
+            while FLAG_STOP is False:
+                data = read_queue.get()  # get will wait
+                if data is None:
+                    # Finish analysis
+                    FLAG_STOP = True
+                else:
+                    # chunk nu+1 has been calculated -> calculate this chunk
+                    # initial values from global variables. data from read_queue should be the initial index in the rhos array
+                    rho0_nu = shared_rho[:,data]
+                    t0 = t[data]
+                    end_idx = data+chunksize
+                    if end_idx > ntimes:
+                        end_idx = ntimes
+                    rho_feedforward = shared_rho_ff[:,0:end_idx] # since we want to interpolate, it makes sense to always start from time index 0 !
+                    t_ff = t[0:end_idx]
+                    feedforward_func = interp1d(t_ff, rho_feedforward[:,0:len(t_ff)], bounds_error=False, fill_value='extrapolate') # interpolation function for feedforward
                     
-                    if n_t % chunksize == 0: 
-                        write_queue.put(n_t - chunksize)
-                
-                if n_t > ntimes:
-                    FLAG_STOP=True
+                    # setup integrator
+                    r = ode(_intfunc_block_interp).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
+                    r.set_initial_value(rho0_nu, t0).set_f_params(L0[nu], L1[nu], feedforward_func)
+                    
+                    n_t=data
+                    if n_t > 0:
+                        n_t += 1
+                    #print(n_t)
+                    #print('First n_t', n_t)
+
+                    chunk_count = 0
+                    while r.successful() and (n_t<ntimes and chunk_count < chunksize):
+                        rho_step = r.integrate(r.t+dt)
+                        shared_rho[:, n_t] = rho_step         
+                        n_t += 1
+                        chunk_count += 1
+                        #print(n_t, chunk_count)
+                        if n_t % chunksize == 0: 
+                            write_queue.put(n_t - chunksize+1)
+                    #print('Last n_t', n_t)
+                    
+                    if n_t >= ntimes:
+                        FLAG_STOP=True
+            existing_shm.close()
+            existing_shm_ff.close()
+
         
     
     
@@ -358,16 +386,28 @@ class TimeEvolve():
         for nu in range(num_blocks):
             self.result.rho[nu][:,0] = self.rho.initial[nu]
             
+        # setup shared memory of rho for all processes:
+        shared_rhos = []
+        shms = []
+        for nu in range(num_blocks):
+            array = self.result.rho[nu]
+            shm=(shared_memory.SharedMemory(create=True,size=array.nbytes))
+            shms.append(shm)
+            shared_array = np.ndarray(array.shape, dtype=array.dtype,buffer=shm.buf)
+            np.copyto(shared_array,array)
+            shared_rhos.append(shared_array)
+            
+        # Create a lock for synchronization
+        lock = multiprocessing.Lock()    
+            
         # initialize expectation values and time
         self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
-        self.result.t = np.zeros(ntimes)
+        self.result.t = np.arange(t0,self.tend+self.dt,self.dt)
         self.result.t[0] = t0
         
-        manager = multiprocessing.Manager()
-        rho_list = manager.list()
+
         
-        global t, rhos, L0, L1
-        rhos = self.result.rho
+        global t, L0, L1
         L0 = self.L.L0
         L1 = self.L.L1
         t = self.result.t
@@ -382,10 +422,10 @@ class TimeEvolve():
         
         # initialize processes
         processes = []
-        processes.append(multiprocessing.Process(target=self.evolve_numax_parallel, args=(self.dt, nu_max,chunksize,self.atol, self.rtol, queues[nu_max])))
+        processes.append(multiprocessing.Process(target=self.evolve_numax_parallel, args=(nu_max,chunksize,self.atol, self.rtol, queues[nu_max], shms[nu_max].name,self.result.rho[nu_max].shape,'complex',lock)))
         
-        # for nu in range(num_blocks-2, -1,-1):
-        #     processes.append(multiprocessing.Process(target=self.evolve_nu_parallel, args=(self.dt, nu, chunksize, self.atol,self.rtol, queues[nu+1], queues[nu])))
+        for nu in range(num_blocks-2, -1,-1):
+             processes.append(multiprocessing.Process(target=self.evolve_nu_parallel, args=(nu, chunksize, self.atol,self.rtol, queues[nu+1], queues[nu],shms[nu].name,self.result.rho[nu].shape,shms[nu+1].name,self.result.rho[nu+1].shape,'complex',lock)))
         
         for p in processes:
             p.start()
@@ -396,26 +436,18 @@ class TimeEvolve():
         for q in queues:
             q.close()
         
-        #rhos_lengths = [0] * (num_blocks) # keep track of lengths of rhos, if the states are being saved
-
-        # setup rhos as 3 times the chunksize, such that there is space for one chunk for feedforward,
-        # and one chunk for calculating the future time evolution.
-        #saved_chunks=3 # number of stored chunks. Must be no less than 3
-        #rhos_chunk = [np.zeros((len(self.indices.mapping_block[i]),saved_chunks*chunksize), dtype=complex) for i in range(num_blocks)] 
+        self.result.rho = shared_rhos
         
-        # keep track, where to write and where to read for each block
-        #write = [0] * len(self.indices.mapping_block) # zero means, write in first chunk. One means, write in second chunk
-            
-        # initial states for each block. Needs to be updated after each chunk calculation
-        #initial = [np.copy(self.rho.initial[nu]) for nu in range(num_blocks)]
-
-        # Loop until a chunk is outside of ntimes
+        # clean up shared memory
+        # for shm in shms:
+        #     shm.close()
+        #     shm.unlink()
         
-                    
+        
         # Now with all rhos, we can calculate the expectation values:         
         for t_idx in range(ntimes):
             for nu in range(num_blocks):
-                self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  np.array(self.expect_comp_block([rhos[nu][:,t_idx]],nu, expect_oper)).flatten()
+                self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  np.array(self.expect_comp_block([self.result.rho[nu][:,t_idx]],nu, expect_oper)).flatten()
 
         elapsed = time()-tstart
         print(f'Complete {elapsed:.0f}s', flush=True)
