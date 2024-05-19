@@ -2,10 +2,10 @@
 import numpy as np
 from itertools import product
 from multiprocessing import Pool
-from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
-from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
-from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
-from util import _multinominal
+from pibs.util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
+from pibs.util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
+from pibs.util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
+from pibs.util import _multinominal
 import os, sys, logging
 import pickle
 from time import time

@@ -5,13 +5,14 @@ Created on Fri May 17 16:59:30 2024
 
 @author: freterl1
 """
+import sys
+sys.path.insert(0, '..')
 
 # https://luis-sena.medium.com/sharing-big-numpy-arrays-across-python-processes-abf0dc2a0ab2
 
 import time
 from datetime import datetime
 import numpy as np
-import sys
 import multiprocessing
 import ray
 
