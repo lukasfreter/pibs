@@ -3,6 +3,7 @@
 !.gitignore
 !*.py
 !.keep
+!*.ipynb
 BlockL_backup.py
 ode_reset.py
 
