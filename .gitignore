@@ -4,6 +4,7 @@
 !*.py
 !.keep
 !*.ipynb
+.ipynb_checkpoints
 BlockL_backup.py
 ode_reset.py
 
