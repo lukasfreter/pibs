@@ -5,42 +5,51 @@ Created on Fri May 17 16:59:30 2024
 
 @author: freterl1
 """
+from collections import defaultdict
+import numpy as np
+import psutil
+import ray
 import sys
-sys.path.insert(0, '..')
-
-# https://luis-sena.medium.com/sharing-big-numpy-arrays-across-python-processes-abf0dc2a0ab2
 
 import time
-from datetime import datetime
-import numpy as np
-import multiprocessing
-import ray
 
-NUM_WORKERS = multiprocessing.cpu_count()
+#https://maxpumperla.com/learning_ray/ch_02_ray_core/
 
-# ray init
-ray.init(num_cpus=NUM_WORKERS)
-np.random.seed(42)
-ARRAY_SIZE = int(2e8)
-ARRAY_SHAPE = (ARRAY_SIZE,)
-data = np.random.random(ARRAY_SIZE)
+num_cpus = psutil.cpu_count(logical=False)
 
+ray.init(num_cpus=num_cpus)
 
 
 @ray.remote
-def np_sum_ray2(obj_ref, start,stop):
-    return np.sum(obj_ref[start:stop])
+class SharedMemory:
+    def __init__(self):
+        self._array = np.random.rand(10)
+    def array(self):
+        return self._array
+    def setarray(self, value, index):
+        self._array[index] = value
+        
 
+    
 
+@ray.remote
+def retrieve_task(memory, index):
+    value = ray.get(memory.array.remote())[index]
+    memory.setarray.remote(0.0, index)
+    return value
 
+def print_runtime(input_data, start_time):
+    print(f'Runtime: {time.time() - start_time:.2f} seconds, data:')
+    print(*input_data, sep="\n")
 
-def benchmark():
-    chunk_size = int(ARRAY_SIZE / NUM_WORKERS)
-    futures = []
-    obj_ref = ray.put(data)
-    ts = time.time_ns()
-    for i in range(0, NUM_WORKERS):
-        start = i + chunk_size if i == 0 else 0
-        futures.append(np_sum_ray2.remote(obj_ref, start, i + chunk_size))
-    results = ray.get(futures)
-    return (time.time_ns() - start_time) / 1_000_000
+memory = SharedMemory.remote()
+print(ray.get(memory.array.remote()))
+
+start = time.time()
+object_references = [retrieve_task.remote(memory, i) for i in range(10)]
+data = ray.get(object_references)
+print_runtime(data, start)
+
+print(ray.get(memory.array.remote()))
+
+ray.shutdown()
