@@ -6,6 +6,13 @@ from pibs.util import export, timeit, tensor, qeye, destroy, create, sigmap, sig
 from pibs.util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
 from pibs.util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
 from pibs.util import _multinominal
+
+# from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
+# from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
+# from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
+# from util import _multinominal
+
+
 import os, sys, logging
 import pickle
 from time import time
@@ -228,7 +235,7 @@ class Indices:
         with open(filepath, 'rb') as handle:
             indices_load = pickle.load(handle)
         self.indices_elements = indices_load.indices_elements
-        self. indices_elements_inv = indices_load.indices_elements_inv
+        self.indices_elements_inv = indices_load.indices_elements_inv
         self.mapping_block = indices_load.mapping_block
         self.elements_block = indices_load.elements_block
         # do some checks
