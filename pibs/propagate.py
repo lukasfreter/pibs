@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
-from time import time
+from time import time, sleep
 import sys, os
 from util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
 from scipy.integrate import ode
@@ -18,22 +18,58 @@ interp_chunk=[]
 
 @ray.remote # ray actor -> store states of blocks in chunks here
 class SharedStates:
-    def __init__(self, chunksize,ntimes):
-        self._shared_rhos = [np.zeros((len(mapping_block[nu]), ntimes), dtype='complex') for nu in range(len(mapping_block))]
+    def __init__(self, chunksize,ntimes,blocksizes, initial):
+        self._shared_rhos = ([np.zeros((blocksizes[nu], ntimes), dtype='complex') for nu in range(len(blocksizes))])
+        self._rho0 = initial
         self.chunksize = chunksize
-        self.chunk_status = [0]*len(mapping_block) # keep track of how many chunks are done for each block
+        self.chunk_status = [0]*len(blocksizes) # keep track of how many chunks are done for each block
+        
+        print('INIT', (self._shared_rhos)[1].shape, ntimes)
+        
     
-    def get_shared_rhos(self,nu, start,end):
+    def rho0(self,nu):
+        return self._rho0[nu]
+    
+    def get_shared_rhos(self,nu, start=None,end=None):
+        if start is None and end is None:
+            return self._shared_rhos[nu] # return whole block
+        
         return self._shared_rhos[nu][:,start:end]
     
+    def get_all(self):
+        return self._shared_rhos
+    
     def write_shared_rhos(self, nu, start, end, data):
+        #print('WRITE', nu, start, end, data.shape, self._shared_rhos[nu][:,start:end].shape, self._shared_rhos[nu].shape)
         self._shared_rhos[nu][:,start:end] = data
         
-    def get_chunck_status(self, nu):
+    def get_chunk_status(self, nu):
         return self.chunk_status[nu]
     
     def increment_chunk_status(self, nu):
         self.chunk_status[nu] += 1
+        
+        
+@ray.remote # store global parameters for ray calculations
+class GlobalParameters:
+    def __init__(self, L,t):
+        self._L = L
+        self._t = t
+        
+    def L0(self,nu):
+        return self._L.L0[nu]
+    def L1(self, nu):
+        return self._L.L1[nu]
+    def t(self, start=None,end=None):
+        if start is None and end is None:
+            return self._t
+        else:
+            return self._t[start:end]
+
+        
+        
+        
+        
 
 
 class Results:
@@ -404,7 +440,7 @@ class TimeEvolve():
         num_blocks = len(self.indices.mapping_block)
         nu_max = num_blocks-1
         t0 = 0
-        ntimes = int(self.tend/self.dt)+1
+        ntimes = round(self.tend/self.dt)+1
         
         #self.result.rho = [[] for _ in range(num_blocks)]
         self.result.rho = [ np.zeros((len(self.indices.mapping_block[i]), ntimes), dtype=complex) for i in range(num_blocks)]
@@ -567,7 +603,7 @@ class TimeEvolve():
         num_blocks = len(self.indices.mapping_block)
         nu_max = num_blocks-1
         t0 = 0
-        ntimes = int(self.tend/self.dt)+1
+        ntimes = round(self.tend/self.dt)+1
         
         if save_states:
             #self.result.rho = [[] for _ in range(num_blocks)]
@@ -709,80 +745,21 @@ class TimeEvolve():
         print(f'Complete {elapsed:.0f}s', flush=True)
         
     
-    @ray.remote
-    def evolve_nu_ray(rho0, rhoff_func, t0, nu, chunksize, shared_rho):
-        """
-        Handles the time evolution of block nu_max and all other blocks nu, too.
-        Distinguish between those two cases by checkin,if a feedforward input is given.
-        
-        This combined function enables the use of the multiprocessing Pool class.
 
-        """
-        tstart = time()
-        rtol = 1e-8
-        atol = 1e-8
-        dt = t[1]-t[0]
-        ntimes = len(t)
-        
-        if rhoff_func is None: # no feedforward -> block nu_max
-            nu_max = nu
-            blocksize= len(mapping_block[nu_max])
-            
-            # initialize rho
-            write_idx = 0
-            rho = np.zeros((blocksize, ntimes), dtype = complex)
-            rho[:,0] = rho0
-        
-            # integrator
-            r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
-            r.set_initial_value(rho0,t0).set_f_params(L.L0[nu_max])
-            
-            # integrate
-            n_t = 1
-            while r.successful() and n_t < ntimes:
-                rho_step = r.integrate(r.t+dt)
-                rho[:,n_t] = rho_step
-                
-                if n_t % chunksize == 0:
-                    # write to shared memory and give signal that next block
-                    # can use data
-                    shared_rho.write_shared_rhos.remote(nu,n_t-chunksize,n_t, rho[n_t-chunksize:n_t])
-                    shared_rho.increment_chunk_status.remote(nu)
-
-                n_t += 1
-            
-        
-        else: # not nu_max
-            blocksize= len(mapping_block[nu])
-            # initial values
-            rho_nu = np.zeros((blocksize, ntimes), dtype = complex)
-            
-            
-            # include check: is block above ready? Yes -> calculate rhoff_func. No -> wait
-            
-            
-            # integrator 
-            r = ode(_intfunc_block_interp).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
-            r.set_initial_value(rho0, t0).set_f_params(L.L0[nu], L.L1[nu], rhoff_func)
-            
-            n_t = 1
-            while r.successful() and n_t<ntimes:
-                rho_step = r.integrate(r.t+dt)
-                rho_nu[:, n_t] = rho_step  
-                
-                if n_t % chunksize == 0:
-                    # mark current chunk as usable for block below
-                    # check: is block above, new chunk done? if yes, update integrator and continue
-                    shared_rho.write_shared_rhos.remote(nu,n_t-chunksize,n_t, rho_nu[n_t-chunksize:n_t])
-                    shared_rho.increment_chunk_status.remote(nu)
-                    
-                   # while shared_rho.get_chunck_status.remote(nu) >= shared_rho.get
-                
-                n_t += 1    
-    
 
     def time_evolve_chunk_ray(self, expect_oper, chunksize, save_states=False):
-        """ Parallelize chunk time evolution using module 'ray'"""
+        """ Parallelize chunk time evolution using module 'ray'
+        
+        
+        Preliminary observations:
+            - If only looking at the time evolution of nu_max (i.e. if initial condition is superfluorescent and no dissipation)
+            then this ray method is EXACTLY the same as the serial block solver.
+            - Do not use global variables in remote function! Somehow, ray exoirts the function to its storage. Better: pack global
+            variables in actor https://discuss.ray.io/t/an-error-with-function-size-threshold/7361
+            
+            
+        
+        """
         
         print(f'Starting time evolution in chunks (RAY), chunk size {chunksize}...')
         tstart = time()
@@ -790,12 +767,10 @@ class TimeEvolve():
         num_blocks = len(self.indices.mapping_block)
         nu_max = num_blocks-1
         t0 = 0
-        ntimes = int(self.tend/self.dt)+1
+        ntimes = round(self.tend/self.dt)+1
         
         num_cpus=14
         ray.init(num_cpus=num_cpus)
-        
-        shared_rhos = SharedStates.remote(self.indices.mapping_block, chunksize)
 
         # keep track, where to write and where to read for each block
         write = [0] * len(self.indices.mapping_block) # zero means, write in first chunk. One means, write in second chunk
@@ -808,116 +783,44 @@ class TimeEvolve():
         self.result.t = np.zeros(ntimes)
         self.result.t = np.arange(t0, self.tend+self.dt,self.dt)
         
-        # make static variables global for parallel processes to use
-        global L, mapping_block, t
-        L = self.L
-        mapping_block = self.indices.mapping_block
-        t = self.result.t
+        # make static variables global for parallel processes to use BAD FOR RAY
+        # global L, mapping_block, t, rho0
+        # L = self.L
+        # mapping_block = self.indices.mapping_block
+        # t = self.result.t
+        # rho0 = self.rho.initial
         
-        # keep track of which blocks are finished:
-        finished = [0]*num_blocks
-
-        # Loop until a chunk is outside of ntimes
-        count = 0
+        blocksizes = [len(self.indices.mapping_block[nu]) for nu in range(num_blocks)]
         
-        # The calculation for block nu can only be started after (nu_max-nu) chunks.
-        # total computation steps: ntimes + (nu_max-1) * chunksize
-        while count * chunksize - (nu_max)*chunksize <= ntimes:    # - (nu_max)*chunktimes, because the nu blocks have to be solved with a time delay      
-            # setup arglist for multiprocessing pool
-            arglist = [] #rho0, rhoff_func, t0,nu, chunksize, store_initial
-            
-            # first calculate block nu_max
-            if count == 0:
-                t0_numax = t0+count*chunksize*self.dt
-            else: 
-                t0_numax = t0+count*chunksize*self.dt - self.dt # because only in the first chunk, the initial condition does not need to be stored again. 
-                                                                # The initial condition of second chunk is the last time of the previous chunk
-            # only calculate time evolution, if tend has not been reached yet
-            if t0_numax < self.tend:
-               # print(t0_numax)
-                # In the initial chunk, save the initial state. Otherwise, don't save initial state,
-                # because it has already been calculated as the final state of the previous chunk
-                if count == 0:
-                    save_initial = True
-                else:
-                    save_initial = False
-                
-                arglist.append((initial[nu_max], None, t0_numax, nu_max, chunksize, save_initial))
-            else:
-                finished[nu_max] = 1
-                
-            
-            
-            # get the number of blocks, one can simultaneously propagate in current chunk
-            # cannot exceet num_blocks, otherwise grows linearly with number of chunks
-            parallel_blocks = min(count+1, num_blocks) 
-            
-            # repeat what has been done already for nu_max
-            # for nu in range(nu_max -1,nu_max - parallel_blocks, -1):
-            #     if count - (nu_max - nu) == 0:
-            #         # for the first chunk, the initial value is already given, so we do not need to calculate them again
-            #         # that is why t0 and feedforward are shifted by one
-            #         t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt
-            #         feedforward = rhos_chunk[nu+1][:,write[nu] * chunksize:(write[nu]+1)*chunksize]
-            #     else:
-            #         # for all but the first chunk, the initial conditions are stored in the previous chunk,
-            #         # so the initial conditions are shifted by one timestep
-            #         t0_nu = t0 + (count - (nu_max - nu)) * chunksize*self.dt-self.dt
-                    
-            #         end_idx = (write[nu]+1)*chunksize-1
-            #         start_idx = write[nu] * chunksize-1
-            #         if start_idx < 0 : # initial state is always the last state of previous chunk. If that chunk is written in the second half of rhos_chunk, we need to take care that a negative first index means: take the last element of the array
-            #             feedforward = np.concatenate((rhos_chunk[nu+1][:,-1:], rhos_chunk[nu+1][:,:end_idx]), axis=1)
-            #         else:
-            #             feedforward = rhos_chunk[nu+1][:, start_idx:end_idx]
-
-                # #print(nu, count-nu_max+nu)
-                # if t0_nu < self.tend:
-                #     # only store initial state, if it is the very first state. Otherwise, initial state is already stored as last state in previous chunk
-                #     if count - (nu_max-nu) == 0:
-                #         save_initial = True
-                #     else:
-                #         save_initial = False
-                    
-                #     t_ff = np.linspace(t0_nu, t0_nu+chunksize*self.dt-self.dt, chunksize)
-                #    # t_ff = np.arange(t0_nu, t0_nu+chunksize*self.dt, self.dt)
-                #     feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
-                    
-                #     arglist.append((initial[nu], feedforward_func, t0_nu, nu, chunksize, save_initial))
-                # else:
-                #     finished[nu] = 1
-                  
-                    
-            # setup parallel pool
-            with Pool(14) as pool:
-                rhos = pool.map(self.evolve_nu_parallel2, arglist)
-            
-                
-            # how many blocks are already finished?
-            f = sum(finished)
-            
-            # loop through results
-            # k = 0 # index of result
-            # for nu in range(nu_max-f, nu_max-len(rhos)-f, -1): # nu_max is first element in rhos, therefore need to loop through in reverse order
-            #     rhos_chunk[nu][:, write[nu] * chunksize:(write[nu]+1)*chunksize] = rhos[k]
-            #     k += 1
-                
-            #     initial[nu] = rhos_chunk[nu][:,(write[nu]+1) * chunksize-1]
-                
-            #     # get part of expectation value corresponding to nu of that chunk
-            #     i=0
-            #     for t_idx in range((count-(nu_max-nu))*chunksize, (count-(nu_max-nu)+1)*chunksize):
-            #         if t_idx >= ntimes:
-            #             continue
-            #         read_index = write[nu] * chunksize
-            #         self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  (
-            #             np.array(self.expect_comp_block([rhos_chunk[nu][:,read_index+ i]],nu, expect_oper)).flatten())
-            #         i = i+1
-            #     # update write variable
-            #     write[nu] = (write[nu] + 1) % saved_chunks # if 1 make it 0, if 0 make it 1
-            
-            # count += 1
-
+        shared_params = GlobalParameters.remote(self.L, self.result.t)
+        
+        shared_rhos = SharedStates.remote(chunksize, ntimes,blocksizes, self.rho.initial)
+        #shared_rhos = SharedStates.remote(1,1)
+        #shared_reference=ray.put(shared_rhos)
+        
+        arglist = []
+        # rhoff_func, nu,blocksize, chunksize, shared_rho, shared_params
+        arglist.append((None, nu_max, blocksizes[nu_max], chunksize, shared_rhos,shared_params))
+        
+        for nu in range(nu_max - 1, -1 , -1):
+            arglist.append((True, nu, blocksizes[nu], chunksize, shared_rhos, shared_params))
+        
+        object_references = [evolve_nu_ray.remote(arglist[nu]) for nu in range(num_blocks)]
+        #object_references = evolve_nu_ray.remote(arglist[0])
+        
+        ray.get(object_references) # wait until all tasks are done
+        
+        # get states from shared memory
+        self.result.rho = [np.copy(ray.get(shared_rhos.get_shared_rhos.remote(nu))) for nu in range(num_blocks)]
+        #self.result.rho = ray.get(shared_rhos.get_all.remote())
+        
+        # get part of expectation value corresponding to nu of that chunk
+        for t_idx in range(ntimes):
+            for nu in range(num_blocks):
+                self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([self.result.rho[nu][:,t_idx]],nu, expect_oper)).flatten()
+           
+        
+        ray.shutdown()
         elapsed = time()-tstart
         print(f'Complete {elapsed:.0f}s', flush=True)
         
@@ -937,7 +840,7 @@ class TimeEvolve():
         num_blocks = len(self.indices.mapping_block)
         nu_max = num_blocks-1
         t0 = 0
-        ntimes = int(self.tend/self.dt)+1
+        ntimes = round(self.tend/self.dt)+1
         
         if save_states:
             #self.result.rho = [[] for _ in range(num_blocks)]
@@ -1131,7 +1034,7 @@ class TimeEvolve():
         dim_rho_compressed = self.indices.ldim_p**2 * len(self.indices.indices_elements)
         num_blocks = len(self.indices.mapping_block)
         t0 = 0
-        ntimes = int(self.tend/self.dt)+1
+        ntimes = round(self.tend/self.dt)+1
             
         rhos= [[] for _ in range(num_blocks)] # store all rho for feed forward
         
@@ -1218,7 +1121,7 @@ class TimeEvolve():
         dim_rho_compressed = self.indices.ldim_p**2 * len(self.indices.indices_elements)
         num_blocks = len(self.indices.mapping_block)
         t0 = 0
-        ntimes = int(self.tend/self.dt)+1
+        ntimes = round(self.tend/self.dt)+1
             
         #rhos= [[] for _ in range(num_blocks)] # store all rho for feed forward
         rhos = [ np.zeros((len(self.indices.mapping_block[i]), ntimes), dtype=complex) for i in range(num_blocks)]
@@ -1342,6 +1245,126 @@ def _intfunc_block(t,y, L0, L1, y1):
 def _intfunc_block_interp(t,y,L0,L1,y1_func):
     """ Same as _intfunc_block, but where y1 is given as a function of time"""
     return (L0.dot(y) + L1.dot(y1_func(t)))
+
+
+
+
+@ray.remote
+def evolve_nu_ray(arglist):
+    """
+    Handles the time evolution of block nu_max and all other blocks nu, too.
+    Distinguish between those two cases by checkin,if a feedforward input is given.
+    
+    This combined function enables the use of the multiprocessing Pool class.
+
+    """
+    rhoff_func, nu,blocksize, chunksize, shared_rho, shared_params = arglist
+    rtol = 1e-8
+    atol = 1e-8
+    
+    rho0 = ray.get(shared_rho.rho0.remote(nu)) # initial state from shared_rho
+    t = ray.get(shared_params.t.remote()) # get time array
+    dt = t[1]-t[0]
+    t0 = t[0]
+    ntimes = len(t)    
+        
+    if rhoff_func is None: # no feedforward -> block nu_max
+        nu_max = nu     
+        
+        L0 = ray.get(shared_params.L0.remote(nu_max)) # L0 from shared_params
+        # initialize rho
+        rho = np.zeros((blocksize, ntimes), dtype = complex)
+        rho[:,0] = rho0
+    
+        # integrator
+        r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
+        r.set_initial_value(rho0,t0).set_f_params(L0)
+        
+        written = 0 # keep track of last written index
+        
+        # integrate
+        n_t = 1
+        while r.successful() and n_t < ntimes:
+            rho_step = r.integrate(r.t+dt)
+            rho[:,n_t] = rho_step
+            
+            if n_t % chunksize == 0:
+                # write to shared memory and give signal that next block
+                # can use data
+                #print('NU',nu,rho[:,n_t-chunksize:n_t].shape, n_t-chunksize, n_t, flush=True)
+                shared_rho.write_shared_rhos.remote(nu,n_t-chunksize,n_t, rho[:,n_t-chunksize:n_t])
+                shared_rho.increment_chunk_status.remote(nu)
+                written += chunksize
+                
+            n_t += 1
+        if written < ntimes: # if last chunk is not exactly full, write the partially filled chunk into the shared memory
+            #print('Fill up', written, ntimes, rho.shape)
+            shared_rho.write_shared_rhos.remote(nu, written, ntimes, rho[:,written:ntimes])
+            shared_rho.increment_chunk_status.remote(nu)
+        
+    
+    else: # not nu_max
+        
+        L0 = ray.get(shared_params.L0.remote(nu)) # L0 from shared_params
+        L1 = ray.get(shared_params.L1.remote(nu))
+
+        # initial values
+        rho_nu = np.zeros((blocksize, ntimes), dtype = complex)
+        rho_nu[:,0] = rho0[nu]
+        
+        written = 0
+        
+        # include check: is block above ready? Yes -> calculate rhoff_func. No -> wait
+        while ray.get(shared_rho.get_chunk_status.remote(nu)) >= ray.get(shared_rho.get_chunk_status.remote(nu+1)):
+            #print(f'Waiting initial {nu}...')
+            sleep(0.01)
+        
+        # after while loop: calculate next block
+        start =0# shared_rho.get_chunk_status.remote(nu)*chunksize
+        end = ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize + chunksize
+        if end > ntimes:
+            end = ntimes
+        feedforward = ray.get(shared_rho.get_shared_rhos.remote(nu+1,start,end))
+        t_ff = t[start:end]
+        
+        feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
+        
+        # integrator 
+        r = ode(_intfunc_block_interp).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
+        r.set_initial_value(rho0, t0).set_f_params(L0, L1, feedforward_func)
+        
+        n_t = 1
+        while r.successful() and n_t<ntimes:
+            rho_step = r.integrate(r.t+dt)
+            rho_nu[:, n_t] = rho_step  
+            
+            if n_t % chunksize == 0:
+                # mark current chunk as usable for block below
+                # check: is block above, new chunk done? if yes, update integrator and continue
+                shared_rho.write_shared_rhos.remote(nu,n_t-chunksize,n_t, rho_nu[:,n_t-chunksize:n_t])
+                shared_rho.increment_chunk_status.remote(nu)
+                #print('NU',nu,rho_nu[:,n_t-chunksize:n_t].shape, n_t-chunksize, n_t)
+                written += chunksize
+                
+                while ray.get(shared_rho.get_chunk_status.remote(nu)) >= ray.get(shared_rho.get_chunk_status.remote(nu+1)):
+                    #print(f'Waiting {nu}...')
+                    sleep(0.1)
+                
+                # after while loop: calculate next block
+                start =0# shared_rho.get_chunk_status.remote(nu)*chunksize
+                end = ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize + chunksize
+                if end > ntimes:
+                    end = ntimes
+                feedforward = ray.get(shared_rho.get_shared_rhos.remote(nu+1,start,end))
+                t_ff = t[start:end]
+                
+                feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
+                r = ode(_intfunc_block_interp).set_integrator('zvode', method='bdf', atol=atol, rtol=rtol).set_initial_value(r.y,r.t).set_f_params(L0,L1, feedforward_func)
+                     
+            n_t += 1    
+        if written < ntimes: # if last chunk is not exactly full, write the partially filled chunk into the shared memory
+            shared_rho.write_shared_rhos.remote(nu, written, ntimes, rho_nu[:,written:ntimes])
+            shared_rho.increment_chunk_status.remote(nu)
 
 
 
