@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 import numpy as np
-from time import time, sleep
-import sys, os
-#from util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
-from pibs.util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
+from time import time
+from util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
+#from pibs.util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
 
 from scipy.integrate import ode
 from scipy.interpolate import interp1d
@@ -11,11 +10,17 @@ from scipy.interpolate import interp1d
 import multiprocessing
 from multiprocessing import shared_memory, Pool
 
-import ray # multiprocessing alternative to try out
+try:
+    #https://stackoverflow.com/questions/71247679/how-to-distribute-python-package-with-numba-as-optional-dependency
+    import ray # multiprocessing alternative to try out
+    from ray import remote
+except ImportError:
+    def remote(*args, **kwargs):
+        return lambda f: f
 
 
 
-@ray.remote # ray actor -> store states of blocks in chunks here
+@remote # ray actor -> store states of blocks in chunks here
 class SharedStates:
     def __init__(self, chunksize,ntimes,blocksizes, initial):
         self._shared_rhos = ([np.zeros((blocksizes[nu], ntimes), dtype='complex') for nu in range(len(blocksizes))])
@@ -61,7 +66,7 @@ class SharedStates:
         self._solver_times[nu,start:end] = data
         
         
-@ray.remote # store global parameters for ray calculations
+@remote # store global parameters for ray calculations
 class GlobalParameters:
     def __init__(self, L,t):
         self._L = L
@@ -791,7 +796,7 @@ class TimeEvolve():
     
 
 
-    def time_evolve_chunk_ray(self, expect_oper, chunksize,num_cpus=None, save_states=False):
+    def time_evolve_chunk_ray(self, expect_oper, chunksize,num_cpus=None, save_states=False, interp_from_zero=True):
         """ Parallelize chunk time evolution using module 'ray'
         
         
@@ -831,18 +836,15 @@ class TimeEvolve():
         shared_rhos = SharedStates.remote(chunksize, ntimes,blocksizes, self.rho.initial)
         
         arglist = []
-        # (is_block_numax, nu,blocksize, chunksize, shared_rho, shared_params)
-        arglist.append((True, nu_max, blocksizes[nu_max], chunksize, shared_rhos,shared_params))
+        # (is_block_numax, nu,blocksize, chunksize, interp_from_zero, shared_rho, shared_params)
+        arglist.append((True, nu_max, blocksizes[nu_max], chunksize,interp_from_zero, shared_rhos,shared_params))
         
         for nu in range(nu_max - 1, -1 , -1):
-            arglist.append((False, nu, blocksizes[nu], chunksize, shared_rhos, shared_params))
+            arglist.append((False, nu, blocksizes[nu], chunksize,interp_from_zero, shared_rhos, shared_params))
         
         #object_references = [evolve_nu_ray.remote(arglist[nu]) for nu in range(num_blocks)]
         # use exact solver times:
         object_references = [evolve_nu_ray_solver_times.remote(arglist[nu]) for nu in range(num_blocks)]
-
-        
-        #object_references = evolve_nu_ray.remote(arglist[0])
         
         ray.get(object_references) # wait until all tasks are done
         
@@ -1337,7 +1339,7 @@ def _intfunc_block_interp(t,y,L0,L1,y1_func):
 
 
 
-@ray.remote
+@remote
 def evolve_nu_ray(arglist):
     """
     Handles the time evolution of block nu_max and all other blocks nu, too.
@@ -1455,16 +1457,18 @@ def evolve_nu_ray(arglist):
             
             
             
-@ray.remote
+@remote
 def evolve_nu_ray_solver_times(arglist):
     """
     Handles the time evolution of block nu_max and all other blocks nu, too.
     Distinguish between those two cases by checkin,if a feedforward input is given.
     
     Used for RAY parallelization
+    
+    Use exact solver time steps instead of linearly spaced t vector
 
     """
-    is_nu_max, nu,blocksize, chunksize, shared_rho, shared_params = arglist
+    is_nu_max, nu,blocksize, chunksize,interp_from_zero, shared_rho, shared_params = arglist
     rtol = 1e-8
     atol = 1e-8
     
@@ -1569,16 +1573,18 @@ def evolve_nu_ray_solver_times(arglist):
                 
                 # after while loop: calculate next block by updating integrator
                 
-                # INTERPOLATION OPTION. from start or from prev block
-                
-                start =0#ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize-1
-                end = ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize + chunksize-1
-                if start ==-1:
-                    start+=1
-                    end+=1
+                # INTERPOLATION OPTION. from start or from prev block. Should not make a difference!
+                if interp_from_zero:
+                    start =0
+                else:
+                    start = ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize-1
+                    
+                end = ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize + chunksize
                 if end > ntimes:
                     end = ntimes
+
                 feedforward = ray.get(shared_rho.get_shared_rhos.remote(nu+1,start,end))
+
                 t_nu_plus1 = ray.get(shared_rho.solver_times.remote(nu+1))
                 t_ff = t_nu_plus1[start:end]
                 
