@@ -12,6 +12,8 @@ from time import time
 import scipy.sparse as sp
 from itertools import permutations
 
+import multiprocessing
+
 
 class Indices:
     """Indices for and mappings between compressed and supercompressed 
@@ -492,6 +494,8 @@ class BlockL:
     @staticmethod
     def calculate_L0_line(args_tuple):
         """ Calculate L0 part of element count_in in block nu_element """
+        global elements_block
+        
         nu_element, count_in = args_tuple
 
         current_element_block = elements_block[nu_element]
@@ -673,6 +677,7 @@ class BlockL:
 
            
            arglist = []
+           multiprocessing.set_start_method('fork')
            global nspins, elements_block
            nspins  = indices.nspins
            elements_block = indices.elements_block
