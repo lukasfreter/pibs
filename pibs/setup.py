@@ -19,7 +19,6 @@ from time import time
 import scipy.sparse as sp
 from itertools import permutations
 
-
 class Indices:
     """Indices for and mappings between compressed and supercompressed 
     density matrices containing unique representative elements for each
@@ -95,64 +94,30 @@ class Indices:
                 
     
     def list_equivalent_elements(self):
-        """Generate basis list, needs to be run at the beginning of
-        each calculation"""
-        from numpy import concatenate, copy, array
+        """Generate a list of elements [left, right] representing all permutation
+        distinct spin elements |left><right|"""
+        #get minimal list of left and right spin indices - in combined form (i.e. as a list of zetas)
+        #Generate list of all unique zeta strings in reverse lexicographic order
+        all_zetas = [np.zeros(self.nspins, dtype=int)]
+        max_zeta = 3 * (self.ldim_s-1) # e.g. spin-1/2 -> s = 0,1 and zeta = 0, 1, 2, 3 = 2s_L + s_R
+        self.recurse_lexi(all_zetas, 0, max_zeta)
+       
+        for count, zetas in enumerate(all_zetas):
+            left, right = self._to_hilbert(zetas)
+            spin_element = np.concatenate((left,right))
+            self.indices_elements.append(spin_element) # elements are stored as np.array of spin values for left (bra) then for right (ket)
+            self.indices_elements_inv[tuple(zetas)] = count # mapping from combined form to index of indices_elements
 
-        count = 0
-        
-        #get minimal list of left and right spin indices (in combined form)
-        spins = self.setup_spin_indices()
-        
-        left = []
-        right = []
-        
-        #split combined indices into left/right form
-        for count in range(len(spins)):
-            leftadd, rightadd = self._to_hilbert(spins[count])
-            left.append(leftadd)
-            right.append(rightadd)
+    def recurse_lexi(self, all_zetas, current_index, max_zeta):
+        """Generate successive strings of zetas, appending to all_zetas list"""
+        previous_element = all_zetas[-1]
+        for zeta in range(1, max_zeta+1):
+            next_element = np.copy(previous_element)
+            next_element[current_index] = zeta
+            all_zetas.append(next_element)
+            if current_index < self.nspins-1:
+                self.recurse_lexi(all_zetas, current_index+1, zeta) 
 
-        
-        left = array(left)
-        right = array(right)
-
-        #loop over each spin configuration
-        for count in range(len(spins)):
-            #calculate element and index 
-            element = concatenate((left[count], right[count]))
-            
-            #add appropriate entries to dictionaries
-            self.indices_elements.append(copy(element))
-            self.indices_elements_inv[self._comp_tuple(element)] = count
-            
-                    
-    def setup_spin_indices(self):
-        """get minimal list of left and right spin indices"""
-        from numpy import concatenate, array, copy
-
-        spin_indices = []
-        spin_indices_temp = []
-        
-        #construct all combinations for one spin
-        for count in range(self.ldim_s**2):
-            spin_indices_temp.append([count])
-        spin_indices_temp = array(spin_indices_temp)
-        spin_indices = [array(x) for x in spin_indices_temp] # Used if ns == 1
-        
-        #loop over all other spins
-        for count in range(self.nspins-1):
-            #make sure spin indices is empty 
-            spin_indices = []   
-            #loop over all states with count-1 spins
-            for index_count in range(len(spin_indices_temp)):
-             
-                #add all numbers equal to or less than the last value in the current list
-                for to_add in range(spin_indices_temp[index_count, -1]+1):
-                    spin_indices.append(concatenate((spin_indices_temp[index_count, :], [to_add])))
-            spin_indices_temp = copy(spin_indices)
-        
-        return spin_indices
     
     def setup_mapping_block(self):
         """
@@ -203,31 +168,11 @@ class Indices:
             for i, num_diff in enumerate(self.difference_block[nu]):
                 self.difference_block_inv[num_diff].append((nu, i))
     
-    def _to_hilbert(self,combined):
-        """convert to Hilbert space index"""
-        left = []
-        right = []
-        for count in range(len(combined)):
-            leftadd, rightadd = self._combined_to_full(combined[count])
-            left.append(leftadd)
-            right.append(rightadd)
-        return left, right
-    
-    def _combined_to_full(self, combined):
-        """create left and right Hilbert space indices from combined index"""
-        right = combined%self.ldim_s
+    def _to_hilbert(self, combined):
+        """Convert zeta-string to |left> and <right| spin values"""
+        right = combined % self.ldim_s
         left = (combined - right)//self.ldim_s
-        
         return left, right
-    
-    def _comp_tuple(self, element):
-        """compress the tuple used in the dictionary"""        
-        element_comp = []
-        
-        for count in range(self.nspins):
-            element_comp.append(element[count]*self.ldim_s + element[count+self.nspins])
-        return tuple(element_comp)
-
 
 
     def export(self, filepath):
@@ -1092,7 +1037,9 @@ class Rho:
         rdm_indices = []
         for perm_indices in permutations(s_indices):
             # spins in rdm are still identical, so need to populate elements are
-            # all rdm indices associated with permutations of the nrs spins (?)
+            # all rdm indices associated with (distinct) permutations of the nrs spin
+            # N.B. duplication occurs here, use more_itertools.distinct_permutations() to
+            # avoid; only costly for large nrs (?)
             index_list = list(perm_indices)
             rdm_indices.append(self.get_rdm_index(count_p1, diff_left[index_list],
                                                   count_p2, diff_right[index_list]))
