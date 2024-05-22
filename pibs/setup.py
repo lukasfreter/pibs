@@ -2,17 +2,17 @@
 import numpy as np
 from itertools import product
 from multiprocessing import Pool
-# from pibs.util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
-# from pibs.util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
-# from pibs.util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
-# from pibs.util import _multinominal
+from pibs.util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
+from pibs.util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
+from pibs.util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
+from pibs.util import _multinominal
 
-from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
-from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
-from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
-from util import _multinominal
+# from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
+# from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
+# from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
+# from util import _multinominal
 
-
+from pibs.propagate import Progress
 import os, sys, logging
 import pickle
 from time import time
@@ -39,7 +39,8 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False):
+    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True):
+        """ debug: Do not load existing file, always calculate new set of indices"""
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
             raise ValueError("Number of spins must be integer N > 0")
@@ -61,14 +62,15 @@ class Indices:
         self.difference_block = []
         self.difference_block_inv = []
         
-        # check if an object with the same arguments already exists in data/indices/ folder
-        index_path = 'data/indices/'
-        index_files = os.listdir(index_path)
-        filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
-        if (any([f == filename for f in index_files])) and not debug:
-            self.load(index_path+filename)
-        else:
-            
+        
+        if debug is False:
+            # check if an object with the same arguments already exists in data/indices/ folder
+            index_path = 'data/indices/'
+            index_files = os.listdir(index_path)
+            filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
+            if (any([f == filename for f in index_files])):
+                self.load(index_path+filename)
+        else: # debug true -> always calculate spin indices anew
             # setup indices
             print(f'Running setup indices with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
             t0 = time()
@@ -83,8 +85,11 @@ class Indices:
             elapsed = time()-t0
             print(f'Complete {elapsed:.0f}s', flush=True)
             
-            # export for future use
-            self.export(index_path + filename)
+            if save:
+                # export for future use, if save is true
+                index_path = 'data/indices/'
+                filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
+                self.export(index_path + filename)
         for nu in range(len(self.mapping_block)):
             assert len(self.mapping_block[nu]) == len(self.elements_block[nu])
                 
@@ -270,7 +275,7 @@ class BlockL:
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
     """
-    def __init__(self, indices, parallel=0, debug=False):
+    def __init__(self, indices, parallel=0, debug=False, save=True):
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
@@ -281,29 +286,35 @@ class BlockL:
         self.L1_basis = {'sigmam': [],
                          'a': []}
         
-
-        # check if an object with the same arguments already exists in data/liouvillian/ folder
-        liouv_path = 'data/liouvillians/'
-        liouv_files = os.listdir(liouv_path)
-        filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
-        if (any([f == filename for f in liouv_files])) and not debug:
-            self.load(liouv_path+filename, indices)
-            return
-        # if not, calculate them
-        t0 = time()
-        pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)'}
-        pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
-                 2: self.setup_L_block_basis_parallel2}
-        try:
-            print(f'Calculating normalised Liouvillian {pname[parallel]}...')
-            pfunc[parallel](indices)
-        except KeyError as e:
-            print('Argument parallel={parallel} not recognised')
-            raise e
-        elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
-        # export normalized Liouvillians for later use
-        self.export(liouv_path+filename)
+        
+        if debug is False:
+            # check if an object with the same arguments already exists in data/liouvillian/ folder
+            liouv_path = 'data/liouvillians/'
+            liouv_files = os.listdir(liouv_path)
+            filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
+            if (any([f == filename for f in liouv_files])):
+                self.load(liouv_path+filename, indices)
+                return
+        else:
+            # if not, calculate them
+            t0 = time()
+            pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)'}
+            pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
+                     2: self.setup_L_block_basis_parallel2}
+            try:
+                print(f'Calculating normalised Liouvillian {pname[parallel]}...')
+                pfunc[parallel](indices)
+            except KeyError as e:
+                print('Argument parallel={parallel} not recognised')
+                raise e
+            elapsed = time()-t0
+            print(f'Complete {elapsed:.0f}s', flush=True)
+            
+            if save:
+                # export normalized Liouvillians for later use, if save is true
+                liouv_path = 'data/liouvillians/'
+                filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'  
+                self.export(liouv_path+filename)
         
         
     
@@ -795,7 +806,7 @@ class BlockDicke(BlockL):
     Model:
         H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
         d/dt rho = -i[H,rho] + kappa*L[a] + gamma*L[sigmam] + gamma_phi*L[sigmaz]"""
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0, debug=False):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         self.rates = {'H_n': wc,
@@ -816,16 +827,19 @@ class BlockDicke(BlockL):
         
         t0 = time()
         print('Calculating Liouvillian from basis...', flush =True)
-        self.setup_L(indices)
+        self.setup_L(indices, progress)
         elapsed = time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
 
-    def setup_L(self, indices):
+    def setup_L(self, indices, progress):
         """ From the basic parts of the Liouvillian, get the whole Liouvillian
         by proper scaling."""
         
-        # use dictionary notation
         num_blocks = len(indices.mapping_block)
+        
+        if progress: # progress bar
+            bar = Progress(2*num_blocks-1,'Louvillian: ')
+        
         for nu in range(num_blocks):
             current_blocksize = len(indices.mapping_block[nu])
             L0_scale = np.zeros((current_blocksize, current_blocksize), dtype=complex)
@@ -833,12 +847,91 @@ class BlockDicke(BlockL):
                 L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
             self.L0.append( sp.csr_matrix(L0_scale ))
             
+            if progress:
+                bar.update()
+            
             if nu < num_blocks -1:
                 next_blocksize = len(indices.mapping_block[nu+1])
                 L1_scale = np.zeros((current_blocksize, next_blocksize), dtype=complex)
                 for name in self.L1_basis:
                     L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
-                self.L1.append( sp.csr_matrix(L1_scale))                     
+                self.L1.append( sp.csr_matrix(L1_scale))   
+                
+                if progress:
+                    bar.update()                  
+
+
+
+
+class Models(BlockL):
+    """ This class contains information about the exact model at hand and
+    calculates the Liouvillian from the basis elements from BlockL.
+    
+    Demanding weak U(1) symmetry and no gain, the most general model of N spins
+    interacting with a common photon mode is described by the Master equation
+        
+        d/dt rho = -i[H,rho] + kappa*L[a] + sum_k{ gamma*L[sigmam_k] + gamma_phi * L[sigmaz_k] }
+        
+    with Hamiltonian H = wc*adag*a + w0/2*sum_k{ sigmaz_k } + g*sum_k{adag*sigmam_k + a*sigmap_k }
+    
+    where the light-matter coupling g is assumed real.
+    
+    """
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False):
+        # specify rates according to what part of Hamiltonian or collapse operators
+        # they scale
+        self.rates = {'H_n': wc,
+                      'H_sigmaz': w0,
+                      'H_g': g,
+                      'a': kappa,
+                      'sigmaz': gamma_phi,
+                      'sigmam': gamma}
+        self.w0 = w0
+        self.wc = wc
+        self.g = g
+        self.kappa = kappa
+        self.gamma = gamma
+        self.gamma_phi = gamma_phi
+        self.indices = indices
+        self.L0 = []
+        self.L1 = []
+        super().__init__(indices, parallel,debug)
+    
+    def setup_L_Tavis_Cummings(self, progress):
+        t0 = time()
+        print('Calculating Liouvillian for TC model from basis...', flush =True)
+        
+        self.L0 = []
+        self.L1 = []
+        
+        num_blocks = len(self.indices.mapping_block)
+        
+        if progress: # progress bar
+            bar = Progress(2*num_blocks-1,'Louvillian: ')
+        
+        for nu in range(num_blocks):
+            current_blocksize = len(self.indices.mapping_block[nu])
+            L0_scale = np.zeros((current_blocksize, current_blocksize), dtype=complex)
+            for name in self.L0_basis:
+                L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
+            self.L0.append( sp.csr_matrix(L0_scale ))
+            
+            if progress:
+                bar.update()
+            
+            if nu < num_blocks -1:
+                next_blocksize = len(self.indices.mapping_block[nu+1])
+                L1_scale = np.zeros((current_blocksize, next_blocksize), dtype=complex)
+                for name in self.L1_basis:
+                    L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
+                self.L1.append( sp.csr_matrix(L1_scale))   
+                
+                if progress:
+                    bar.update()                  
+        
+        
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
 
 
 

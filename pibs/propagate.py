@@ -2,7 +2,9 @@
 import numpy as np
 from time import time, sleep
 import sys, os
-from util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
+#from util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
+from pibs.util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
+
 from scipy.integrate import ode
 from scipy.interpolate import interp1d
 
@@ -75,12 +77,7 @@ class GlobalParameters:
         else:
             return self._t[start:end]
 
-        
-        
-        
-        
-
-
+  
 class Results:
     def __init__(self):
         self.rho= []
@@ -1166,7 +1163,7 @@ class TimeEvolve():
         ntimes = round(self.tend/self.dt)+1
         
         if progress:
-            bar = Progress((ntimes-1)*num_blocks, description='Time evolution under L...', start_step=1)
+            bar = Progress(2*(ntimes-1)*num_blocks, description='Time evolution under L...', start_step=1)
         if save_states is None:
             save_states = True if expect_oper is None else False
         if not save_states and expect_oper is None:
@@ -1216,8 +1213,8 @@ class TimeEvolve():
                 
         # calculate nu_max part of expectation values
         if expect_oper is not None:
-            if progress:
-                bar = Progress(ntimes, description='Calculating expectation values...', start_step=1)
+            # if progress:
+            #     bar = Progress(ntimes, description='Calculating expectation values...', start_step=1)
                 
             for t_idx in range(ntimes):
                 #self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([rhos[nu][:,t_idx]],nu, expect_oper)).flatten()
@@ -1571,6 +1568,8 @@ def evolve_nu_ray_solver_times(arglist):
                     continue#sleep(0.1)
                 
                 # after while loop: calculate next block by updating integrator
+                
+                # INTERPOLATION OPTION. from start or from prev block
                 
                 start =0#ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize-1
                 end = ray.get(shared_rho.get_chunk_status.remote(nu))*chunksize + chunksize-1
