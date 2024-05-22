@@ -12,6 +12,8 @@ from pibs.util import _multinominal
 # from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
 # from util import _multinominal
 
+# from propagate import Progress
+
 from pibs.propagate import Progress
 import os, sys, logging
 import pickle
@@ -689,7 +691,7 @@ class BlockL:
         
         
         for count_in in range(current_blocksize):
-            L0_line = BlockDicke.calculate_L0_line((nu_element, count_in))
+            L0_line = BlockL.calculate_L0_line((nu_element, count_in))
             
             for name in L0_new:
                 L0_new[name][count_in,:] = L0_line[name]
@@ -706,7 +708,7 @@ class BlockL:
 
         
         for count_in in range(current_blocksize):
-            L1_line = BlockDicke.calculate_L1_line((nu_element, count_in))
+            L1_line = BlockL.calculate_L1_line((nu_element, count_in))
             for name in L1_new:
                 L1_new[name][count_in,:] = L1_line[name]
         
@@ -743,67 +745,67 @@ class BlockL:
        
    
                         
-class BlockDicke(BlockL):
-    """ Calculates the specific Liouvillian of the Tavis Cummings model. This class
-    inherits the Liouvillian basis from BlockL. With the specified parameters of the 
-    Hamiltonian and the collapse operators, one can calculate the Liouvillian.
+# class BlockDicke(BlockL):
+#     """ Calculates the specific Liouvillian of the Tavis Cummings model. This class
+#     inherits the Liouvillian basis from BlockL. With the specified parameters of the 
+#     Hamiltonian and the collapse operators, one can calculate the Liouvillian.
     
-    Model:
-        H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
-        d/dt rho = -i[H,rho] + kappa*L[a] + gamma*L[sigmam] + gamma_phi*L[sigmaz]"""
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False):
-        # specify rates according to what part of Hamiltonian or collapse operators
-        # they scale
-        self.rates = {'H_n': wc,
-                      'H_sigmaz': w0,
-                      'H_g': g,
-                      'a': kappa,
-                      'sigmaz': gamma_phi,
-                      'sigmam': gamma}
-        self.w0 = w0
-        self.wc = wc
-        self.g = g
-        self.kappa = kappa
-        self.gamma = gamma
-        self.gamma_phi = gamma_phi
-        self.L0 = []
-        self.L1 = []
-        super().__init__(indices, parallel,debug)
+#     Model:
+#         H = wc*adag*a + sum_k { w0*sigmaz_k  + g*(a*sigmap_k + adag*sigmam_k) }
+#         d/dt rho = -i[H,rho] + kappa*L[a] + gamma*L[sigmam] + gamma_phi*L[sigmaz]"""
+#     def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False):
+#         # specify rates according to what part of Hamiltonian or collapse operators
+#         # they scale
+#         self.rates = {'H_n': wc,
+#                       'H_sigmaz': w0,
+#                       'H_g': g,
+#                       'a': kappa,
+#                       'sigmaz': gamma_phi,
+#                       'sigmam': gamma}
+#         self.w0 = w0
+#         self.wc = wc
+#         self.g = g
+#         self.kappa = kappa
+#         self.gamma = gamma
+#         self.gamma_phi = gamma_phi
+#         self.L0 = []
+#         self.L1 = []
+#         super().__init__(indices, parallel,debug)
         
-        t0 = time()
-        print('Calculating Liouvillian from basis...', flush =True)
-        self.setup_L(indices, progress)
-        elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+#         t0 = time()
+#         print('Calculating Liouvillian from basis...', flush =True)
+#         self.setup_L(indices, progress)
+#         elapsed = time()-t0
+#         print(f'Complete {elapsed:.0f}s', flush=True)
 
-    def setup_L(self, indices, progress):
-        """ From the basic parts of the Liouvillian, get the whole Liouvillian
-        by proper scaling."""
+#     def setup_L(self, indices, progress):
+#         """ From the basic parts of the Liouvillian, get the whole Liouvillian
+#         by proper scaling."""
         
-        num_blocks = len(indices.mapping_block)
+#         num_blocks = len(indices.mapping_block)
         
-        if progress: # progress bar
-            bar = Progress(2*num_blocks-1,'Louvillian: ')
+#         if progress: # progress bar
+#             bar = Progress(2*num_blocks-1,'Louvillian: ')
         
-        for nu in range(num_blocks):
-            current_blocksize = len(indices.mapping_block[nu])
-            L0_scale = np.zeros((current_blocksize, current_blocksize), dtype=complex)
-            for name in self.L0_basis:
-                L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
-            self.L0.append( sp.csr_matrix(L0_scale ))
+#         for nu in range(num_blocks):
+#             current_blocksize = len(indices.mapping_block[nu])
+#             L0_scale = np.zeros((current_blocksize, current_blocksize), dtype=complex)
+#             for name in self.L0_basis:
+#                 L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
+#             self.L0.append( sp.csr_matrix(L0_scale ))
             
-            if progress:
-                bar.update()
+#             if progress:
+#                 bar.update()
             
-            if nu < num_blocks -1:
-                next_blocksize = len(indices.mapping_block[nu+1])
-                L1_scale = np.zeros((current_blocksize, next_blocksize), dtype=complex)
-                for name in self.L1_basis:
-                    L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
-                self.L1.append( sp.csr_matrix(L1_scale))   
+#             if nu < num_blocks -1:
+#                 next_blocksize = len(indices.mapping_block[nu+1])
+#                 L1_scale = np.zeros((current_blocksize, next_blocksize), dtype=complex)
+#                 for name in self.L1_basis:
+#                     L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
+#                 self.L1.append( sp.csr_matrix(L1_scale))   
                 
-                if progress:
-                    bar.update()                  
+#                 if progress:
+#                     bar.update()                  
 
 
 
@@ -822,7 +824,7 @@ class Models(BlockL):
     where the light-matter coupling g is assumed real.
     
     """
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         self.rates = {'H_n': wc,
@@ -840,9 +842,9 @@ class Models(BlockL):
         self.indices = indices
         self.L0 = []
         self.L1 = []
-        super().__init__(indices, parallel,debug)
+        super().__init__(indices, parallel,debug,save)
     
-    def setup_L_Tavis_Cummings(self, progress):
+    def setup_L_Tavis_Cummings(self, progress=False):
         t0 = time()
         print('Calculating Liouvillian for TC model from basis...', flush =True)
         
@@ -1085,9 +1087,6 @@ if __name__ == '__main__':
     gamma = 0.02
     gamma_phi = 0.03
     indi = Indices(ntls)
-    L = BlockDicke(wc, w0,g, kappa, gamma_phi/4,gamma, indi)
-    rho = Rho(basis(nphot,0), basis(2,0), indi) # initial condition with zero photons and all spins up.
-    
 
 
 
