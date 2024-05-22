@@ -74,26 +74,28 @@ class Indices:
             filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
             if (any([f == filename for f in index_files])):
                 self.load(index_path+filename)
-        else: # debug true -> always calculate spin indices anew
-            # setup indices
-            print(f'Running setup indices with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
-            t0 = time()
-            self.list_equivalent_elements()
-            elapsed = time()-t0
-            print(f'Complete {elapsed:.0f}s', flush=True)
-    
-            # setup mapping block
-            print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
-            t0 = time()
-            self.setup_mapping_block()
-            elapsed = time()-t0
-            print(f'Complete {elapsed:.0f}s', flush=True)
+                return
             
-            if save:
-                # export for future use, if save is true
-                index_path = 'data/indices/'
-                filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
-                self.export(index_path + filename)
+        # debug true -> always calculate spin indices anew, or if not save file is found
+        # setup indices
+        print(f'Running setup indices with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+        t0 = time()
+        self.list_equivalent_elements()
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+
+        # setup mapping block
+        print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+        t0 = time()
+        self.setup_mapping_block()
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+        
+        if save:
+            # export for future use, if save is true
+            index_path = 'data/indices/'
+            filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
+            self.export(index_path + filename)
         for nu in range(len(self.mapping_block)):
             assert len(self.mapping_block[nu]) == len(self.elements_block[nu])
                 
@@ -225,7 +227,7 @@ class BlockL:
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
     """
-    def __init__(self, indices, parallel=0, debug=False, save=True):
+    def __init__(self, indices, parallel=0, debug=False, save=True, progress=False):
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
@@ -245,26 +247,26 @@ class BlockL:
             if (any([f == filename for f in liouv_files])):
                 self.load(liouv_path+filename, indices)
                 return
-        else:
-            # if not, calculate them
-            t0 = time()
-            pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)'}
-            pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
-                     2: self.setup_L_block_basis_parallel2}
-            try:
-                print(f'Calculating normalised Liouvillian {pname[parallel]}...')
-                pfunc[parallel](indices)
-            except KeyError as e:
-                print('Argument parallel={parallel} not recognised')
-                raise e
-            elapsed = time()-t0
-            print(f'Complete {elapsed:.0f}s', flush=True)
             
-            if save:
-                # export normalized Liouvillians for later use, if save is true
-                liouv_path = 'data/liouvillians/'
-                filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'  
-                self.export(liouv_path+filename)
+        # if not, calculate them
+        t0 = time()
+        pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)'}
+        pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
+                 2: self.setup_L_block_basis_parallel2}
+        try:
+            print(f'Calculating normalised Liouvillian {pname[parallel]}...')
+            pfunc[parallel](indices, progress)
+        except KeyError as e:
+            print('Argument parallel={parallel} not recognised')
+            raise e
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+        
+        if save:
+            # export normalized Liouvillians for later use, if save is true
+            liouv_path = 'data/liouvillians/'
+            filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'  
+            self.export(liouv_path+filename)
         
         
     
@@ -285,9 +287,13 @@ class BlockL:
     
         
     
-    def setup_L_block_basis(self, indices):
+    def setup_L_block_basis(self, indices, progress):
        """ Calculate Liouvillian basis in block form"""
        num_blocks = len(indices.mapping_block)
+       
+       if progress:
+           num_elements = sum([len(indices.mapping_block[nu]) for nu in range(num_blocks)])
+           bar = Progress(num_elements, 'Calculate L basis...')
        
        #------------------------------------------------------
        # First, get L0 part -> coupling to same block, 
@@ -314,6 +320,8 @@ class BlockL:
            
            # Loop through all elements in the same block
            for count_in in range(current_blocksize):
+               if progress:
+                   bar.update()
                # get element, of which we want the time derivative
                element = indices.elements_block[nu_element][count_in]
                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
@@ -407,6 +415,7 @@ class BlockL:
                # Now get L1 part -> coupling from nu_element to nu_element+1
                # loop through all matrix elements in the next block we want to couple to
                for count_out in range(next_blocksize):
+                   
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element+1][count_out]
                    left_to_couple = element_to_couple[0:indices.nspins+1]
@@ -611,7 +620,7 @@ class BlockL:
     
         return L1_line
     
-    def setup_L_block_basis_parallel(self, indices):
+    def setup_L_block_basis_parallel(self, indices, progress):
        """ Calculate Liouvillian basis in block form. Parallelize the calculation
        of rows of the Liouvillian"""
        num_blocks = len(indices.mapping_block)
@@ -720,7 +729,7 @@ class BlockL:
         
         return L1_new
 
-    def setup_L_block_basis_parallel2(self, indices):
+    def setup_L_block_basis_parallel2(self, indices, progress):
        """ Calculate Liouvillian basis in block form. Parallelized the calculation
        of each block"""
        num_blocks = len(indices.mapping_block)
@@ -848,11 +857,11 @@ class Models(BlockL):
         self.indices = indices
         self.L0 = []
         self.L1 = []
-        super().__init__(indices, parallel,debug,save)
+        super().__init__(indices, parallel,debug,save, progress)
     
     def setup_L_Tavis_Cummings(self, progress=False):
         t0 = time()
-        print('Calculating Liouvillian for TC model from basis...', flush =True)
+        print('Calculating Liouvillian for TC model from basis ...', flush =True)
         
         self.L0 = []
         self.L1 = []
@@ -864,27 +873,27 @@ class Models(BlockL):
         
         for nu in range(num_blocks):
             current_blocksize = len(self.indices.mapping_block[nu])
-            L0_scale = np.zeros((current_blocksize, current_blocksize), dtype=complex)
+            L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
             for name in self.L0_basis:
                 L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
-            self.L0.append( sp.csr_matrix(L0_scale ))
+            self.L0.append( L0_scale)
             
             if progress:
                 bar.update()
             
             if nu < num_blocks -1:
                 next_blocksize = len(self.indices.mapping_block[nu+1])
-                L1_scale = np.zeros((current_blocksize, next_blocksize), dtype=complex)
+                L1_scale = sp.csr_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
                 for name in self.L1_basis:
                     L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
-                self.L1.append( sp.csr_matrix(L1_scale))   
+                self.L1.append(L1_scale)   
                 
                 if progress:
-                    bar.update()                  
-        
-        
+                    bar.update()
+ 
         elapsed = time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
+        
 
 
 
