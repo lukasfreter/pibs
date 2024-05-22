@@ -607,7 +607,7 @@ class TimeEvolve():
         if expect_oper == None:
             self.time_evolve_block(save_states=True, progress=progress)
             return
-        
+       
         print(f'Starting time evolution in chunks (parallel 2), chunk size {chunksize}...')
         tstart = time()
                
@@ -615,6 +615,9 @@ class TimeEvolve():
         nu_max = num_blocks-1
         t0 = 0
         ntimes = round(self.tend/self.dt)+1
+        num_evolutions = int(np.ceil(ntimes/chunksize))+nu_max
+        if progress:
+            bar = Progress(num_evolutions, description='Time evolution total progress...', start_step=0)
         
         if save_states:
             #self.result.rho = [[] for _ in range(num_blocks)]
@@ -784,6 +787,8 @@ class TimeEvolve():
                 write[nu] = (write[nu] + 1) % saved_chunks # if 1 make it 0, if 0 make it 1
             
             count += 1
+            if progress:
+                bar.update()
 
         elapsed = time()-tstart
         print(f'Complete {elapsed:.0f}s', flush=True)
