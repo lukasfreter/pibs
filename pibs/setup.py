@@ -640,7 +640,7 @@ class BlockL:
        multiprocessing.set_start_method('fork')
 
        if progress: # progress bar
-           bar = Progress(4*num_blocks,'Louvillian: ')
+           bar = Progress(3*num_blocks,'Liouvillian: ')
        # loop through all elements in block structure
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
@@ -892,7 +892,7 @@ class Models(BlockL):
         num_blocks = len(self.indices.mapping_block)
         
         if progress: # progress bar
-            bar = Progress(2*num_blocks-1,'Louvillian: ')
+            bar = Progress(2*num_blocks-1,'Liouvillian: ')
         
         for nu in range(num_blocks):
             current_blocksize = len(self.indices.mapping_block[nu])
