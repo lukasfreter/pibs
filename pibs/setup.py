@@ -44,7 +44,7 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True):
+    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True, index_path=None):
         """ debug: Do not load existing file, always calculate new set of indices"""
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
@@ -67,12 +67,14 @@ class Indices:
         self.difference_block = []
         self.difference_block_inv = []
         
+        # loading/saving paths
+        if index_path is None:
+            index_path = 'data/indices/'
+        filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
         
         if debug is False:
             # check if an object with the same arguments already exists in data/indices/ folder
-            index_path = 'data/indices/'
             index_files = os.listdir(index_path)
-            filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
             if (any([f == filename for f in index_files])):
                 self.load(index_path+filename)
                 return
@@ -94,8 +96,6 @@ class Indices:
         
         if save:
             # export for future use, if save is true
-            index_path = 'data/indices/'
-            filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
             self.export(index_path + filename)
         for nu in range(len(self.mapping_block)):
             assert len(self.mapping_block[nu]) == len(self.elements_block[nu])
@@ -196,6 +196,9 @@ class Indices:
         self.indices_elements_inv = indices_load.indices_elements_inv
         self.mapping_block = indices_load.mapping_block
         self.elements_block = indices_load.elements_block
+        self.difference_block = indices_load.difference_block
+        self.difference_block_inv = indices_load.difference_block_inv
+        
         # do some checks
         # at least tell user what they loaded
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
@@ -228,7 +231,7 @@ class BlockL:
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
     """
-    def __init__(self, indices, parallel=0, debug=False, save=True, progress=False):
+    def __init__(self, indices, parallel=0,num_cpus=1, debug=False, save=True, progress=False, liouv_path=None):
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
@@ -238,13 +241,15 @@ class BlockL:
                          'H_g': []}
         self.L1_basis = {'sigmam': [],
                          'a': []}
+        self.num_cpus = num_cpus
         
+        if liouv_path is None:
+            liouv_path = 'data/liouvillians/'
+        filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
         
         if debug is False:
             # check if an object with the same arguments already exists in data/liouvillian/ folder
-            liouv_path = 'data/liouvillians/'
             liouv_files = os.listdir(liouv_path)
-            filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
             if (any([f == filename for f in liouv_files])):
                 self.load(liouv_path+filename, indices)
                 return
@@ -265,8 +270,6 @@ class BlockL:
         
         if save:
             # export normalized Liouvillians for later use, if save is true
-            liouv_path = 'data/liouvillians/'
-            filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'  
             self.export(liouv_path+filename)
         
         
@@ -277,8 +280,10 @@ class BlockL:
         print(f'Storing Liouvillian for later use in {filepath}')
             
     def load(self, filepath,ind):
+        print('loading')
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
+        print('loadedd')
             
         self.L0_basis = L_load.L0_basis
         self.L1_basis = L_load.L1_basis
@@ -658,7 +663,7 @@ class BlockL:
            for count_in in range(current_blocksize):
                arglist.append((nu_element, count_in))
            #print(f'Block {nu_element}/{num_blocks}: {len(arglist)} args')
-           with Pool() as pool:
+           with Pool(processes=self.num_cpus) as pool:
                list_of_lines = pool.map(self.calculate_L0_line, arglist)
            
 
@@ -668,7 +673,7 @@ class BlockL:
                self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
            
            if nu_element < num_blocks -1:
-               with Pool() as pool:
+               with Pool(processes=self.num_cpus) as pool:
                    list_of_lines = pool.map(self.calculate_L1_line, arglist)
 
                for name in L1_new:
@@ -745,7 +750,7 @@ class BlockL:
        # loop through all elements in block structure
        arglist = [nu for nu in range(num_blocks)]
        
-       with Pool() as pool:
+       with Pool(processes=self.num_cpus) as pool:
            L0s = pool.map(self.L0_nu_task, arglist)
        
        for name in self.L0_basis:
@@ -753,7 +758,7 @@ class BlockL:
                self.L0_basis[name].append(L0s[nu][name])
        
        arglist = arglist[:-1] # not nu_max 
-       with Pool() as pool:
+       with Pool(processes=self.num_cpus) as pool:
            L1s = pool.map(self.L1_nu_task, arglist)
            
        for name in self.L1_basis:
@@ -844,7 +849,7 @@ class Models(BlockL):
     where the light-matter coupling g is assumed real.
     
     """
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True, num_cpus=1, liouv_path=None):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         self.rates = {'H_n': wc,
@@ -862,7 +867,7 @@ class Models(BlockL):
         self.indices = indices
         self.L0 = []
         self.L1 = []
-        super().__init__(indices, parallel,debug,save, progress)
+        super().__init__(indices=indices, parallel=parallel,num_cpus=num_cpus, debug=debug, save=save, progress=progress,liouv_path=liouv_path)
     
     def setup_L_Tavis_Cummings(self, progress=False):
         t0 = time()

@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 import numpy as np
 from time import time
-from util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
+from util import  basis, vector_to_operator, expect
 #from pibs.util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
 
 from scipy.integrate import ode
 from scipy.interpolate import interp1d
 
-import multiprocessing
-from multiprocessing import shared_memory, Pool
+from multiprocessing import Pool
 
 try:
     #https://stackoverflow.com/questions/71247679/how-to-distribute-python-package-with-numba-as-optional-dependency
@@ -149,7 +148,7 @@ class TimeEvolve():
         discard the states, such that memory usage can be minimized.
         """
         
-    def __init__(self, rho, L, indices, tend, dt , atol=1e-5, rtol=1e-5):
+    def __init__(self, rho, L, indices, tend, dt, atol=1e-5, rtol=1e-5):
         self.tend = tend
         self.dt = dt
         self.atol = atol
@@ -270,9 +269,7 @@ class TimeEvolve():
 
         """
         tstart = time()
-        rho0, rhoff_func, t0, nu, chunksize, store_initial = args_tuple
-        rtol = 1e-8
-        atol = 1e-8
+        rho0, rhoff_func, t0, nu, chunksize, store_initial, rtol, atol = args_tuple
         dt = t[1]-t[0]
         
         if rhoff_func is None: # no feedforward -> block nu_max
@@ -334,7 +331,7 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False):
+    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=2):
         """ Parallelize and minimize the amount of stored states. In this function, the synchronization
         between processes is done 'by hand'. Meaning, similar to the 'time_evolve_chunk' function,
         we loop through chunks, and for each iteration of the loop, a new parallel pool is being set up
@@ -427,7 +424,7 @@ class TimeEvolve():
                 else:
                     save_initial = False
                 
-                arglist.append((initial[nu_max], None, t0_numax, nu_max, chunksize, save_initial))
+                arglist.append((initial[nu_max], None, t0_numax, nu_max, chunksize, save_initial, self.rtol, self.atol))
             else:
                 finished[nu_max] = 1
                 
@@ -475,13 +472,13 @@ class TimeEvolve():
                     
                     feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
                     
-                    arglist.append((initial[nu], feedforward_func, t0_nu, nu, chunksize, save_initial))
+                    arglist.append((initial[nu], feedforward_func, t0_nu, nu, chunksize, save_initial, self.rtol,self.atol))
                 else:
                     finished[nu] = 1
                   
                     
             # setup parallel pool
-            with Pool() as pool:
+            with Pool(processes = num_cpus) as pool:
                 results = pool.map(self.evolve_nu_parallel2, arglist)
             
             
@@ -534,7 +531,7 @@ class TimeEvolve():
     
 
 
-    def time_evolve_chunk_ray(self, expect_oper, chunksize,num_cpus=None, save_states=False, interp_from_zero=True):
+    def time_evolve_chunk_ray(self, expect_oper, chunksize,num_cpus=None, save_states=False, interp_from_zero=True, runtime_env=None):
         """ Parallelize chunk time evolution using module 'ray'
         
         
@@ -556,7 +553,7 @@ class TimeEvolve():
         t0 = 0
         ntimes = round(self.tend/self.dt)+1
         
-        ray.init(num_cpus=num_cpus) # initialize ray, takes about 3s
+        ray.init(num_cpus=num_cpus, runtime_env = runtime_env) # initialize ray, takes about 3s
     
         # initialize expectation values and time
         self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
@@ -574,11 +571,11 @@ class TimeEvolve():
         shared_rhos = SharedStates.remote(chunksize, ntimes,blocksizes, self.rho.initial)
         
         arglist = []
-        # (is_block_numax, nu,blocksize, chunksize, interp_from_zero, shared_rho, shared_params)
-        arglist.append((True, nu_max, blocksizes[nu_max], chunksize,interp_from_zero, shared_rhos,shared_params))
+        # (is_block_numax, nu,blocksize, chunksize, interp_from_zero,rtol,atol, shared_rho, shared_params)
+        arglist.append((True, nu_max, blocksizes[nu_max], chunksize,interp_from_zero,self.rtol,self.atol, shared_rhos,shared_params))
         
         for nu in range(nu_max - 1, -1 , -1):
-            arglist.append((False, nu, blocksizes[nu], chunksize,interp_from_zero, shared_rhos, shared_params))
+            arglist.append((False, nu, blocksizes[nu], chunksize,interp_from_zero,self.rtol,self.atol, shared_rhos, shared_params))
         
         # use exact solver times:
         object_references = [evolve_nu_ray_solver_times.remote(arglist[nu]) for nu in range(num_blocks)]
@@ -786,9 +783,7 @@ def evolve_nu_ray_solver_times(arglist):
     Use exact solver time steps instead of linearly spaced t vector
 
     """
-    is_nu_max, nu,blocksize, chunksize,interp_from_zero, shared_rho, shared_params = arglist
-    rtol = 1e-8
-    atol = 1e-8
+    is_nu_max, nu,blocksize, chunksize,interp_from_zero,rtol,atol, shared_rho, shared_params = arglist
     
     rho0 = ray.get(shared_rho.rho0.remote(nu)) # initial state from shared_rho
     t = ray.get(shared_params.t.remote()) # get time array
