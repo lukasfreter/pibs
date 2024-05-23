@@ -44,7 +44,7 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True, index_path=None):
+    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True, index_path=None, suppress_output=False):
         """ debug: Do not load existing file, always calculate new set of indices"""
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
@@ -81,18 +81,22 @@ class Indices:
             
         # debug true -> always calculate spin indices anew, or if not save file is found
         # setup indices
-        print(f'Running setup indices with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+        if not suppress_output:
+            print(f'Running setup indices with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
         t0 = time()
         self.list_equivalent_elements()
         elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if not suppress_output:
+            print(f'Complete {elapsed:.0f}s', flush=True)
 
         # setup mapping block
-        print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+        if not suppress_output:
+            print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
         t0 = time()
         self.setup_mapping_block()
         elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if not suppress_output:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
         if save:
             # export for future use, if save is true
@@ -186,6 +190,7 @@ class Indices:
     def export(self, filepath):
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
+            
         print(f'Storing Indices for later use in {filepath}')
 
 
