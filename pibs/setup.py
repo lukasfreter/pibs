@@ -291,7 +291,16 @@ class BlockL:
         # at least tell user what they loaded
         print(f'Loaded Liouvillian file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
     
-        
+    @staticmethod    
+    def sparse_constructor_dic(shape):
+        # (data, (coords_x, coords_y)
+        return {'data':[], 'coords':[[],[]], 'shape':shape}
+    @staticmethod
+    def new_entry(L_dic, name, count_in, count_out, data):
+        # function to add data and coords to target L dictionary and name
+        L_dic[name]['data'].append(data)
+        L_dic[name]['coords'][0].append(count_in)
+        L_dic[name]['coords'][1].append(count_out)
     
     def setup_L_block_basis(self, indices, progress):
        """ Calculate Liouvillian basis in block form"""
@@ -304,27 +313,18 @@ class BlockL:
        #------------------------------------------------------
        # First, get L0 part -> coupling to same block, 
        #------------------------------------------------------
-       # rewrite in dictionary
-       # (data, (coords_x, coords_y)
-       def sparse_constructor_dic(shape):
-           return {'data':[], 'coords':[[],[]], 'shape':shape}
-       # function to add data and coords to target L dictionary and name
-       def new_data_entry(L_dic, name, count_in, count_out, data):
-           L_dic[name]['data'].append(data)
-           L_dic[name]['coords'][0].append(count_in)
-           L_dic[name]['coords'][1].append(count_out)
        
        # loop through all elements in block structure
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
            names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
-           L0_new ={name:sparse_constructor_dic((current_blocksize, current_blocksize)) for name in names}
+           L0_new ={name:self.sparse_constructor_dic((current_blocksize, current_blocksize)) for name in names}
            if nu_element < num_blocks-1:
                next_blocksize = len(indices.mapping_block[nu_element+1])
                # Liouvillian terms coupling to next block
                names = ['sigmam', 'a']
-               L1_new ={name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
+               L1_new ={name:self.sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
            
            # Loop through all elements in the same block
            for count_in in range(current_blocksize):
@@ -355,8 +355,8 @@ class BlockL:
                    if (right_to_couple == right).all() and (left_to_couple == left).all():
                        s_down_right = sum(right[1:])
                        s_down_left = sum(left[1:])
-                       new_data_entry(L0_new, 'H_n', count_in, count_out, -1j * (left[0]-right[0]))
-                       new_data_entry(L0_new, 'H_sigmaz', count_in, count_out, 1j*(s_down_left-s_down_right))
+                       self.new_entry(L0_new, 'H_n', count_in, count_out, -1j * (left[0]-right[0]))
+                       self.new_entry(L0_new, 'H_sigmaz', count_in, count_out, 1j*(s_down_left-s_down_right))
                    
                    # offdiagonal parts
                    elif(states_compatible(right, right_to_couple)):
@@ -374,9 +374,9 @@ class BlockL:
                         # check if photon number in left state increases or decreases and
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                         if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
-                            new_data_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]))
+                            self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]))
                         elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
-                            new_data_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
+                            self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
                                
                    elif(states_compatible(left, left_to_couple)):            
                         # if they are compatible, permute right_to_couple appropriately for proper H element
@@ -391,9 +391,9 @@ class BlockL:
                         # check if photon number in right state increases or decreases and
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                         if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
-                            new_data_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
+                            self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
                         elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
-                            new_data_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
+                            self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
 
                    
                    
@@ -403,17 +403,17 @@ class BlockL:
                    if (right_to_couple == right).all() and (left_to_couple == left).all():
                        deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
                        deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
-                       new_data_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
+                       self.new_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
                    
                    # L0 part from L[sigmaz] -> whole dissipator
                    # Left and right states must be equal, because sigmaz is diagonal in the spins.
                    if (left_to_couple == left).all() and (right_to_couple == right).all():
                        equal = (left[1:indices.nspins+1] == right[1:indices.nspins+1]).sum()
-                       new_data_entry(L0_new, 'sigmaz', count_in, count_out, 2*(equal - indices.nspins))
+                       self.new_entry(L0_new, 'sigmaz', count_in, count_out, 2*(equal - indices.nspins))
                        
                    # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
                    if (left_to_couple == left).all() and (right_to_couple == right).all():
-                       new_data_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
+                       self.new_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
 
 
                    
@@ -445,14 +445,14 @@ class BlockL:
                        if (sum(left[1:]) - sum(left_to_couple[1:]) == 1) and (sum(right[1:]) - sum(right_to_couple[1:]) == 1):       
                            # Get the number of permutations, that contribute.                             
                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
-                           new_data_entry(L1_new, 'sigmam', count_in, count_out, deg)
+                           self.new_entry(L1_new, 'sigmam', count_in, count_out, deg)
                    
                    # L1 part from L[a] -> a * rho* adag
                    # since spins remain the same, first check if spin states match
                    # if spins match, then the element can couple, because we are looping through the block nu+1. Therefore
                    # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
-                       new_data_entry(L1_new, 'a', count_in, count_out,  np.sqrt((left[0]+1)*(right[0] + 1)))
+                       self.new_entry(L1_new, 'a', count_in, count_out,  np.sqrt((left[0]+1)*(right[0] + 1)))
            
             
            # append new blocks to the basis as sparse matrices (CSR format)
@@ -472,7 +472,7 @@ class BlockL:
     @staticmethod
     def calculate_L0_line(args_tuple):
         """ Calculate L0 part of element count_in in block nu_element """
-        global elements_block
+        global elements_block, new_entry, sparse_constructor_dic
         
         nu_element, count_in = args_tuple
 
@@ -485,14 +485,9 @@ class BlockL:
     
         
         # initialize Liouvillian rows for element count_in
-        L0_line = {
-            'sigmaz': np.zeros((1, current_blocksize), dtype=complex),
-            'sigmam': np.zeros((1, current_blocksize), dtype=complex),
-            'a': np.zeros((1, current_blocksize), dtype=complex),
-            'H_n': np.zeros((1, current_blocksize), dtype=complex),
-            'H_sigmaz': np.zeros((1, current_blocksize), dtype=complex),
-            'H_g': np.zeros((1, current_blocksize), dtype=complex)
-            }
+        names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
+        L0_line = {name:sparse_constructor_dic((current_blocksize, current_blocksize)) for name in names}
+        new_entry_func = lambda name, count_out, val: new_entry(L0_line, name, count_in, count_out, val)
         
         # now loop through all matrix elements in the same block, to get L0 couplings
         for count_out in range(current_blocksize):
@@ -514,8 +509,8 @@ class BlockL:
             if (right_to_couple == right).all() and (left_to_couple == left).all():
                 s_down_right = sum(right[1:])
                 s_down_left = sum(left[1:])
-                L0_line['H_n'][0, count_out] = -1j * (left[0]-right[0])
-                L0_line['H_sigmaz'][0, count_out] = 1j*(s_down_left-s_down_right)
+                new_entry_func('H_n', count_out, -1j * (left[0]-right[0]))
+                new_entry_func('H_sigmaz', count_out, 1j*(s_down_left-s_down_right))
             
             # offdiagonal parts
             elif(states_compatible(right, right_to_couple)):
@@ -533,9 +528,10 @@ class BlockL:
                  # check if photon number in left state increases or decreases and
                  # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                  if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
-                     L0_line['H_g'][0, count_out] = L0_line['H_g'][0, count_out]  - 1j*deg * np.sqrt(left[0])
-                 elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
-                     L0_line['H_g'][0, count_out] = L0_line['H_g'][0, count_out] - 1j*deg * np.sqrt(left[0]+1)   
+                     new_entry_func('H_g', count_out, - 1j*deg * np.sqrt(left[0]))
+
+                 elif (left[0] - left_to_couple[0] == -1) and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
+                     new_entry_func('H_g', count_out,- 1j*deg * np.sqrt(left[0]+1))
                         
             elif(states_compatible(left, left_to_couple)):            
                  # if they are compatible, permute right_to_couple appropriately for proper H element
@@ -550,9 +546,9 @@ class BlockL:
                  # check if photon number in right state increases or decreases and
                  # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                  if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
-                     L0_line['H_g'][0, count_out] = L0_line['H_g'][0, count_out] + 1j*deg * np.sqrt(right[0])
+                     new_entry_func('H_g', count_out, 1j*deg * np.sqrt(right[0]))
                  elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
-                     L0_line['H_g'][0, count_out] = L0_line['H_g'][0, count_out] + 1j*deg * np.sqrt(right[0]+1)
+                     new_entry_func('H_g', count_out, 1j*deg * np.sqrt(right[0]+1))
     
             
             
@@ -562,17 +558,17 @@ class BlockL:
             if (right_to_couple == right).all() and (left_to_couple == left).all():
                 deg_right = degeneracy_spin_gamma(right_to_couple[1:nspins+1], right[1:nspins+1]) # degeneracy: because all spin up elements contribute equally
                 deg_left = degeneracy_spin_gamma(left_to_couple[1:nspins+1], left[1:nspins+1])
-                L0_line['sigmam'][0,count_out] = - 1/2 * (deg_left+deg_right)
+                new_entry_func('sigmam', count_out, - 1/2 * (deg_left+deg_right))
             
             # L0 part from L[sigmaz] -> whole dissipator
             # Left and right states must be equal, because sigmaz is diagonal in the spins.
             if (left_to_couple == left).all() and (right_to_couple == right).all():
                 equal = (left[1:nspins+1] == right[1:nspins+1]).sum()
-                L0_line['sigmaz'][0,count_out] = 2*(equal - nspins)
+                new_entry_func('sigmaz', count_out,  2*(equal - nspins))
                 
             # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
             if (left_to_couple == left).all() and (right_to_couple == right).all():
-                L0_line['a'][0,count_out] = -1/2*(left[0] + right[0]) 
+                new_entry_func('a', count_out, -1/2*(left[0] + right[0]))
         return L0_line
 
     @staticmethod
@@ -581,6 +577,7 @@ class BlockL:
         
         #indices,count_in, nu_element = args_tuple
         nu_element, count_in = args_tuple
+        global elements_block, new_entry, sparse_constructor_dic
         
         # get element, of which we want the time derivative
         current_element = elements_block[nu_element][count_in]
@@ -594,9 +591,10 @@ class BlockL:
         # loop through all matrix elements in the next block we want to couple to
         next_element_block = elements_block[nu_element+1]
         next_blocksize = len(elements_block[nu_element+1])
-        # initialize L1 rows
-        L1_line = {'sigmam': np.zeros((1, next_blocksize), dtype=complex),
-                  'a': np.zeros((1, next_blocksize), dtype=complex)}
+
+        names = ['sigmam', 'a']
+        L1_line = {name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
+        new_entry_func = lambda name, count_out, val: new_entry(L1_line, name, count_in, count_out, val)
         for count_out in range(next_blocksize):
             # get "to couple" element
             element_to_couple = next_element_block[count_out]
@@ -619,14 +617,14 @@ class BlockL:
                 if (sum(left[1:]) - sum(left_to_couple[1:]) == 1) and (sum(right[1:]) - sum(right_to_couple[1:]) == 1):       
                     # Get the number of permutations, that contribute.                             
                     deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
-                    L1_line['sigmam'][0,count_out] = deg
+                    new_entry_func('sigmam', count_out, deg)
             
             # L1 part from L[a] -> a * rho* adag
             # since spins remain the same, first check if spin states match
             # if spins match, then the element can couple, because we are looping through the block nu+1. Therefore
             # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
             if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
-                L1_line['a'][0,count_out] = np.sqrt((left[0]+1)*(right[0] + 1))
+                new_entry_func('a', count_out, np.sqrt((left[0]+1)*(right[0] + 1)))
     
         return L1_line
     
@@ -634,52 +632,62 @@ class BlockL:
        """ Calculate Liouvillian basis in block form. Parallelize the calculation
        of rows of the Liouvillian"""
        num_blocks = len(indices.mapping_block)
-       
+       multiprocessing.set_start_method('fork')
+
+       if progress: # progress bar
+           bar = Progress(4*num_blocks,'Louvillian: ')
        # loop through all elements in block structure
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
            
-           # rewrite in dictionary
-           L0_new ={'sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                    'sigmam': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                    'a': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                    'H_n': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                    'H_sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                    'H_g': np.zeros((current_blocksize, current_blocksize), dtype=complex)}
-           
-           if nu_element < num_blocks-1:
-               next_blocksize = len(indices.mapping_block[nu_element+1])
-               L1_new = {'sigmam': np.zeros((current_blocksize, next_blocksize), dtype=complex),
-                         'a': np.zeros((current_blocksize, next_blocksize), dtype=complex)}
 
+           L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
+           L0_new = {name:self.sparse_constructor_dic((current_blocksize, current_blocksize))
+                     for name in L0_names}
            
            arglist = []
-           multiprocessing.set_start_method('fork')
-           global nspins, elements_block
+           global nspins, elements_block, sparse_constructor_dic, new_entry
            nspins  = indices.nspins
            elements_block = indices.elements_block
+           sparse_constructor_dic = self.sparse_constructor_dic
+           new_entry = self.new_entry
         #nu_element, count_in = args_tuple
            for count_in in range(current_blocksize):
                arglist.append((nu_element, count_in))
+           if progress:
+               bar.update()
            #print(f'Block {nu_element}/{num_blocks}: {len(arglist)} args')
            with Pool(processes=self.num_cpus) as pool:
-               list_of_lines = pool.map(self.calculate_L0_line, arglist)
-           
-
-           for name in L0_new:
-               for count_in in range(current_blocksize):
-                    L0_new[name][count_in,:] = list_of_lines[count_in][name]
-               self.L0_basis[name].append(sp.csr_matrix(L0_new[name]))
+               for L0_data in pool.imap(self.calculate_L0_line, arglist):
+                   for name in L0_names:
+                       L0_new[name]['data'].extend(L0_data[name]['data'])
+                       L0_new[name]['coords'][0].extend(L0_data[name]['coords'][0])
+                       L0_new[name]['coords'][1].extend(L0_data[name]['coords'][1])
+           for name in L0_names:
+               Lnew = L0_new[name]
+               data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+               self.L0_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+           if progress:
+               bar.update()
            
            if nu_element < num_blocks -1:
+               next_blocksize = len(indices.mapping_block[nu_element+1])
+               L1_names = ['sigmam', 'a']
+               L1_new = {name:self.sparse_constructor_dic((current_blocksize, next_blocksize))
+                         for name in L1_names}
                with Pool(processes=self.num_cpus) as pool:
-                   list_of_lines = pool.map(self.calculate_L1_line, arglist)
-
-               for name in L1_new:
-                   for count_in in range(current_blocksize):
-                       L1_new[name][count_in,:] = list_of_lines[count_in][name]
-                   self.L1_basis[name].append(sp.csr_matrix(L1_new[name]))
+                   for L1_data in pool.imap(self.calculate_L1_line, arglist):
+                       for name in L1_names:
+                           L1_new[name]['data'].extend(L1_data[name]['data'])
+                           L1_new[name]['coords'][0].extend(L1_data[name]['coords'][0])
+                           L1_new[name]['coords'][1].extend(L1_data[name]['coords'][1])
+               for name in L1_names:
+                   Lnew = L1_new[name]
+                   data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+                   self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+           if progress:
+               bar.update()
            # Loop through all elements in the same block
            # for count_in in range(current_blocksize):
            #     L0_line = self.calculate_L0_line(indices, count_in, nu_element)
