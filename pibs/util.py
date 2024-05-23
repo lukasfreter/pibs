@@ -5,7 +5,9 @@ import numpy as np
 import scipy.sparse as sp
 from math import factorial
 
-
+def get_size(obj):
+    """Estimate size of object in MB"""
+    return round(len(pickle.dumps(obj))/1024**2, 2)
 def export(obj, fp):
     pass
 
