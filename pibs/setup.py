@@ -656,6 +656,7 @@ class BlockL:
                bar.update()
            #print(f'Block {nu_element}/{num_blocks}: {len(arglist)} args')
            with Pool(processes=self.num_cpus) as pool:
+               #print('Number of processes:', pool._processes)
                for L0_data in pool.imap(self.calculate_L0_line, arglist):
                    for name in L0_names:
                        L0_new[name]['data'].extend(L0_data[name]['data'])
@@ -674,6 +675,7 @@ class BlockL:
                L1_new = {name:self.sparse_constructor_dic((current_blocksize, next_blocksize))
                          for name in L1_names}
                with Pool(processes=self.num_cpus) as pool:
+                   #print('Number of processes:', pool._processes)
                    for L1_data in pool.imap(self.calculate_L1_line, arglist):
                        for name in L1_names:
                            L1_new[name]['data'].extend(L1_data[name]['data'])
