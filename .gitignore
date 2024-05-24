@@ -8,4 +8,7 @@
 BlockL_backup.py
 ode_reset.py
 mp_Array.py
-
+*cluster.py
+*cluster.sh
+*.out
+*.err
