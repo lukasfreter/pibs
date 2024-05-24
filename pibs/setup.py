@@ -197,13 +197,7 @@ class Indices:
     def load(self, filepath):
         with open(filepath, 'rb') as handle:
             indices_load = pickle.load(handle)
-        self.indices_elements = indices_load.indices_elements
-        self.indices_elements_inv = indices_load.indices_elements_inv
-        self.mapping_block = indices_load.mapping_block
-        self.elements_block = indices_load.elements_block
-        self.difference_block = indices_load.difference_block
-        self.difference_block_inv = indices_load.difference_block_inv
-        
+        self.__dict__ = indices_load.__dict__
         # do some checks
         # at least tell user what they loaded
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
@@ -256,7 +250,7 @@ class BlockL:
             # check if an object with the same arguments already exists in data/liouvillian/ folder
             liouv_files = os.listdir(liouv_path)
             if (any([f == filename for f in liouv_files])):
-                self.load(liouv_path+filename, indices)
+                self._load(liouv_path+filename, indices)
                 return
             
         # if not, calculate them
@@ -284,11 +278,11 @@ class BlockL:
             pickle.dump(self, handle)
         print(f'Storing Liouvillian for later use in {filepath}')
             
-    def load(self, filepath,ind):
+    def _load(self, filepath,ind):
         print('loading')
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
-        print('loadedd')
+        print('loaded')
             
         self.L0_basis = L_load.L0_basis
         self.L1_basis = L_load.L1_basis
@@ -882,7 +876,7 @@ class Models(BlockL):
         self.L1 = []
         super().__init__(indices=indices, parallel=parallel,num_cpus=num_cpus, debug=debug, save=save, progress=progress,liouv_path=liouv_path)
     
-    def setup_L_Tavis_Cummings(self, progress=False):
+    def setup_L_Tavis_Cummings(self, progress=False, save_path=None):
         t0 = time()
         print('Calculating Liouvillian for TC model from basis ...', flush =True)
         
@@ -916,10 +910,19 @@ class Models(BlockL):
  
         elapsed = time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
-        
+        if save_path is not None:
+            with open(save_path, 'wb') as handle:
+                pickle.dump(self, handle)
+            print(f'Wrote full model to {save_path}.')
 
-
-
+    @classmethod
+    def load(cls, filepath):
+        """Load a previously saved model from .pkl file"""
+        with open(filepath, 'rb') as handle:
+            obj = pickle.load(handle)
+        # check it is actually a valid Model object...
+        print(f'Loaded {type(cls)} object from {filepath}')
+        return obj
 
 class Rho:
     """ Functionality related to density matrix:
