@@ -285,10 +285,8 @@ class BlockL:
         print(f'Storing Liouvillian for later use in {filepath}')
             
     def load(self, filepath,ind):
-        print('loading')
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
-        print('loadedd')
             
         self.L0_basis = L_load.L0_basis
         self.L1_basis = L_load.L1_basis
