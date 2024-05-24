@@ -276,7 +276,7 @@ class BlockL:
     def export(self, filepath):
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
-        print(f'Storing Liouvillian for later use in {filepath}')
+        print(f'Storing Liouvillian basis for later use in {filepath}')
             
     def _load(self, filepath,ind):
         with open(filepath, 'rb') as handle:
@@ -286,7 +286,7 @@ class BlockL:
         self.L1_basis = L_load.L1_basis
         
         # at least tell user what they loaded
-        print(f'Loaded Liouvillian file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
+        print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
     
     @staticmethod    
     def sparse_constructor_dic(shape):
@@ -629,7 +629,7 @@ class BlockL:
        """ Calculate Liouvillian basis in block form. Parallelize the calculation
        of rows of the Liouvillian"""
        num_blocks = len(indices.mapping_block)
-       multiprocessing.set_start_method('fork')
+       #multiprocessing.set_start_method('fork')
 
        if progress: # progress bar
            bar = Progress(3*num_blocks,'Liouvillian: ')
@@ -854,7 +854,7 @@ class Models(BlockL):
     where the light-matter coupling g is assumed real.
     
     """
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True, num_cpus=1, liouv_path=None):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma,indices, parallel=0,progress=False, debug=False, save=True, num_cpus=None, liouv_path=None):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         self.rates = {'H_n': wc,

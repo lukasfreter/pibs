@@ -148,7 +148,7 @@ class TimeEvolve():
         discard the states, such that memory usage can be minimized.
         """
         
-    def __init__(self, rho, L, indices, tend, dt, atol=1e-5, rtol=1e-5):
+    def __init__(self, rho, L, tend, dt, atol=1e-5, rtol=1e-5):
         self.tend = tend
         self.dt = dt
         self.atol = atol
@@ -159,7 +159,9 @@ class TimeEvolve():
         # should we store rho and L like this ? Or give as parameters when calling .time_evolve_block?
         self.rho = rho
         self.L = L
-        self.indices = indices
+        
+        # fix this later
+        self.indices = rho.indices
         
     
     
