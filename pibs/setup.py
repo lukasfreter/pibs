@@ -276,19 +276,17 @@ class BlockL:
     def export(self, filepath):
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
-        print(f'Storing Liouvillian for later use in {filepath}')
+        print(f'Storing Liouvillian basis for later use in {filepath}')
             
     def _load(self, filepath,ind):
-        print('loading')
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
-        print('loaded')
             
         self.L0_basis = L_load.L0_basis
         self.L1_basis = L_load.L1_basis
         
         # at least tell user what they loaded
-        print(f'Loaded Liouvillian file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
+        print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
     
     @staticmethod    
     def sparse_constructor_dic(shape):
@@ -631,7 +629,7 @@ class BlockL:
        """ Calculate Liouvillian basis in block form. Parallelize the calculation
        of rows of the Liouvillian"""
        num_blocks = len(indices.mapping_block)
-       multiprocessing.set_start_method('fork')
+       #multiprocessing.set_start_method('fork')
 
        if progress: # progress bar
            bar = Progress(3*num_blocks,'Liouvillian: ')
