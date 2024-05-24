@@ -331,7 +331,7 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=2):
+    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None):
         """ Parallelize and minimize the amount of stored states. In this function, the synchronization
         between processes is done 'by hand'. Meaning, similar to the 'time_evolve_chunk' function,
         we loop through chunks, and for each iteration of the loop, a new parallel pool is being set up

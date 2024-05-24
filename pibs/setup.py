@@ -236,7 +236,7 @@ class BlockL:
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
     """
-    def __init__(self, indices, parallel=0,num_cpus=1, debug=False, save=True, progress=False, liouv_path=None):
+    def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True, progress=False, liouv_path=None):
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
