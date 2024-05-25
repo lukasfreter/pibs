@@ -188,10 +188,12 @@ class Indices:
 
 
     def export(self, filepath):
+        print(f'Storing Indices for later use in {filepath} ...')
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
+        print('Storing complete')
             
-        print(f'Storing Indices for later use in {filepath}')
+
 
 
     def load(self, filepath):
