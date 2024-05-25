@@ -235,3 +235,34 @@ def _multinominal(bins):
     for count_bin in range(len(bins)):
         combinations = combinations//factorial(bins[count_bin])
     return combinations
+
+
+class Progress:
+    def __init__(self, total, description='', start_step=0):
+        self.description = description
+        self.step = start_step
+        self.end = total-1
+        self.percent = self.calc_percent()
+        self.started = False
+
+    def calc_percent(self):
+        return int(100*self.step/self.end)
+
+    def update(self, step=None):
+        # print a description at the start of the calculation
+        if not self.started:
+            print('{}{:4d}%'.format(self.description, self.percent), end='', flush=True)
+            self.started = True
+            return
+        # progress one step or to the specified step
+        if step is None:
+            self.step += 1
+        else:
+            self.step = step
+        percent = self.calc_percent()
+        # only waste time printing if % has actually increased one integer
+        if percent > self.percent:
+            print('\b\b\b\b\b{:4d}%'.format(percent), end='', flush=True)
+            self.percent = percent
+        if self.step == self.end:
+            print('', flush=True)
