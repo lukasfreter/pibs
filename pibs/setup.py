@@ -12,9 +12,7 @@ from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, 
 from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
 from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
 from util import _multinominal
-
-from propagate import Progress
-
+from util import Progress
 
 import os, sys, logging
 import pickle
@@ -630,9 +628,9 @@ class BlockL:
        of rows of the Liouvillian"""
        num_blocks = len(indices.mapping_block)
        #multiprocessing.set_start_method('fork')
-
-       if progress: # progress bar
-           bar = Progress(3*num_blocks,'Liouvillian: ')
+       if progress:
+           num_elements = sum([len(indices.mapping_block[nu]) for nu in range(num_blocks)])
+           bar = Progress(2*num_elements, 'Calculate L basis...') # 2 updates per block
        # loop through all elements in block structure
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
@@ -652,8 +650,6 @@ class BlockL:
         #nu_element, count_in = args_tuple
            for count_in in range(current_blocksize):
                arglist.append((nu_element, count_in))
-           if progress:
-               bar.update()
            #print(f'Block {nu_element}/{num_blocks}: {len(arglist)} args')
            with Pool(processes=self.num_cpus) as pool:
                #print('Number of processes:', pool._processes)
@@ -662,12 +658,12 @@ class BlockL:
                        L0_new[name]['data'].extend(L0_data[name]['data'])
                        L0_new[name]['coords'][0].extend(L0_data[name]['coords'][0])
                        L0_new[name]['coords'][1].extend(L0_data[name]['coords'][1])
+                   if progress:
+                       bar.update()
            for name in L0_names:
                Lnew = L0_new[name]
                data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                self.L0_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
-           if progress:
-               bar.update()
            
            if nu_element < num_blocks -1:
                next_blocksize = len(indices.mapping_block[nu_element+1])
@@ -681,12 +677,15 @@ class BlockL:
                            L1_new[name]['data'].extend(L1_data[name]['data'])
                            L1_new[name]['coords'][0].extend(L1_data[name]['coords'][0])
                            L1_new[name]['coords'][1].extend(L1_data[name]['coords'][1])
+                   if progress:
+                       bar.update()
                for name in L1_names:
                    Lnew = L1_new[name]
                    data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                    self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
-           if progress:
-               bar.update()
+           else:
+               if progress:
+                   bar.update(2*num_elements-1)
            # Loop through all elements in the same block
            # for count_in in range(current_blocksize):
            #     L0_line = self.calculate_L0_line(indices, count_in, nu_element)
