@@ -915,6 +915,79 @@ class Models(BlockL):
             with open(save_path, 'wb') as handle:
                 pickle.dump(self, handle)
             print(f'Wrote full model to {save_path}.')
+            
+            
+            
+    
+    @staticmethod
+    def add_scaleL0(args_tuple):
+        nu, current_blocksize = args_tuple
+        L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
+        for name in L0_basis:
+            L0_scale = L0_scale + rates[name] * L0_basis[name][nu]
+        return L0_scale
+            
+    @staticmethod
+    def add_scaleL1(args_tuple):
+        nu, current_blocksize, next_blocksize = args_tuple
+        L1_scale = sp.coo_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
+        for name in L1_basis:
+            L1_scale = L1_scale + rates[name] * L1_basis[name][nu]
+        return L1_scale
+        
+        
+    
+    
+    def setup_L_Tavis_Cummings_parallel(self, progress=False, save_path=None):
+        t0 = time()
+        print('Calculating Liouvillian for TC model from basis (parallel) ...', flush =True)
+        
+        self.L0 = []
+        self.L1 = []
+        
+        num_blocks = len(self.indices.mapping_block)
+        
+        if progress: # progress bar
+            bar = Progress(2*num_blocks-1,'Liouvillian: ')
+            
+        global L0_basis, L1_basis, rates # for usage in add_scale method
+        L0_basis = self.L0_basis
+        L1_basis = self.L1_basis
+        rates = self.rates
+        
+        args_L0=[]
+        args_L1=[]
+        
+        for nu in range(num_blocks):
+            current_blocksize = len(self.indices.mapping_block[nu])
+            args_L0.append((nu, current_blocksize))
+            
+            if nu < num_blocks-1:
+                next_blocksize = len(self.indices.mapping_block[nu+1])
+                args_L1.append((nu, current_blocksize, next_blocksize))
+        
+        
+        with Pool() as pool:
+            resultsL0=pool.map(self.add_scaleL0, args_L0)
+        
+        with Pool() as pool:
+            resultsL1 = pool.map(self.add_scaleL1, args_L1)
+        
+        
+        for res in resultsL0:
+            self.L0.append(res)
+        for res in resultsL1:
+            self.L1.append(res)
+        
+            
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+        if save_path is not None:
+            with open(save_path, 'wb') as handle:
+                pickle.dump(self, handle)
+            print(f'Wrote full model to {save_path}.')
+            
+            
 
     @classmethod
     def load(cls, filepath):
