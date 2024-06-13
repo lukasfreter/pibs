@@ -891,7 +891,8 @@ class Models(BlockL):
         
         for nu in range(num_blocks):
             current_blocksize = len(self.indices.mapping_block[nu])
-            L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
+            #L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
+            L0_scale = sp.csr_matrix((current_blocksize, current_blocksize), dtype=complex)
             for name in self.L0_basis:
                 L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
             self.L0.append( L0_scale)
@@ -901,7 +902,9 @@ class Models(BlockL):
             
             if nu < num_blocks -1:
                 next_blocksize = len(self.indices.mapping_block[nu+1])
-                L1_scale = sp.csr_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
+                #L1_scale = sp.csr_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
+                L1_scale = sp.csr_matrix((current_blocksize, next_blocksize), dtype=complex)
+                
                 for name in self.L1_basis:
                     L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
                 self.L1.append(L1_scale)   
@@ -922,7 +925,10 @@ class Models(BlockL):
     @staticmethod
     def add_scaleL0(args_tuple):
         nu, current_blocksize = args_tuple
-        L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
+        #L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
+        L0_scale = sp.csr_matrix((current_blocksize, current_blocksize), dtype=complex)
+        
+        
         for name in L0_basis:
             L0_scale = L0_scale + rates[name] * L0_basis[name][nu]
         return L0_scale
@@ -930,7 +936,9 @@ class Models(BlockL):
     @staticmethod
     def add_scaleL1(args_tuple):
         nu, current_blocksize, next_blocksize = args_tuple
-        L1_scale = sp.coo_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
+        #L1_scale = sp.coo_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
+        L1_scale = sp.csr_matrix((current_blocksize, next_blocksize), dtype=complex)
+        
         for name in L1_basis:
             L1_scale = L1_scale + rates[name] * L1_basis[name][nu]
         return L1_scale
