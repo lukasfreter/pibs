@@ -263,10 +263,11 @@ class BlockL:
             
         # if not, calculate them
         t0 = time()
-        pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)',3:'ray module'}
+        pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)',3:'ray module (lines)', 4: 'ray module (blocks)'}
         pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
                  2: self.setup_L_block_basis_parallel2,
-                 3: self.setup_L_block_basis_ray}
+                 3: self.setup_L_block_basis_ray,
+                 4: self.setup_L_block_basis_ray2}
         try:
             print(f'Calculating normalised Liouvillian {pname[parallel]}...')
             pfunc[parallel](indices, progress)
@@ -787,7 +788,7 @@ class BlockL:
        
     def setup_L_block_basis_ray(self, indices, progress): 
        """ Calculate Liouvillian basis in block form. Parallelization is done
-       with 'ray' module
+       with 'ray' module. Line calculation of L is parallelized.
 
        """
        ray.init(num_cpus=self.num_cpus)
@@ -847,13 +848,75 @@ class BlockL:
                data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
 
-            
-       
+
        ray.shutdown()
        
+       
+
+      
+    def setup_L_block_basis_ray2(self, indices, progress):
+        """ Calculate Liouvillian basis in block form. Parallelization is done
+        with 'ray' module. Block calculation of L is parallelized.
+
+        """
+        ray.shutdown()
+        ray.init(num_cpus = self.num_cpus)
+
+        num_blocks = len(indices.mapping_block)
+        
+        
+        # shared memory
+        shared_memory = SharedMemory.remote(indices.elements_block)
+
+        # shared memory of liouvillians
+        shared_liouv = SharedLiouv.remote(num_blocks)
+        
+        # L0 blocks
+        # loop through all elements in block structure
+        arglist = []
+        for nu in range(num_blocks):
+            arglist.append((nu, indices.nspins,shared_memory, shared_liouv))
+        
+        object_references_L0 = [L0_nu_task_ray.remote(args) for args in arglist]
+        
+        # L1 blocks
+        # loop through all elements in block structure
+        arglist = []
+        for nu in range(num_blocks-1):
+            arglist.append((nu, indices.nspins,shared_memory, shared_liouv))
+        
+        object_references_L1 = [L1_nu_task_ray.remote(args) for args in arglist]
+        
+        # wait for processes
+        ray.get(object_references_L0)
+        ray.get(object_references_L1)
+        
+        # the shared liouv should now have data and coords of all L
+        L0_basis_dic = ray.get(shared_liouv.L0_basis_dic.remote())
+        L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']        
+        
+        for L0_new in L0_basis_dic:
+            for name in L0_names:
+                Lnew = L0_new[name]
+                data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+                self.L0_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+                
+        L1_basis_dic = ray.get(shared_liouv.L1_basis_dic.remote())
+        L1_names = ['a', 'sigmam']        
+        
+        for L1_new in L1_basis_dic:
+            for name in L1_names:
+                Lnew = L1_new[name]
+                data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+                self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+        
+        ray.shutdown()
+        
 
 @remote # shared memory for ray functions
 class SharedMemory:
+    """ Shared memory for setting up L with ray module. For now, only elements_block
+    are stored here."""
     def __init__(self,elements_block):
         self._elements_block = elements_block
         
@@ -863,6 +926,27 @@ class SharedMemory:
         return self._elements_block[nu]
 
 
+@remote # shared memory for Liouvillian
+class SharedLiouv:
+    """ Shared memory for setting up L with ray module. Here, the data and coordinates
+    of all L0 and L1 parts are stored and updated. The idea is, that the ray processes
+    can write the data in the shared dictionaries here. After ray is done, the data and coordinates
+    are transformed into sparse matrices."""
+    def __init__(self, num_blocks):
+        self._L0_basis_dic = [{} for _ in range(num_blocks)]
+        self._L1_basis_dic = [{} for _ in range(num_blocks-1)]
+
+    def append_L0(self,nu, dic):
+        self._L0_basis_dic[nu]=dic
+        
+    def append_L1(self,nu, dic):
+        self._L1_basis_dic[nu]=dic
+        
+    def L0_basis_dic(self):
+        return self._L0_basis_dic
+    def L1_basis_dic(self):
+        return self._L1_basis_dic
+
 # maybe find a better solution instead of copy pasting the functions here
 def sparse_constructor_dic(shape):
     # (data, (coords_x, coords_y)
@@ -871,11 +955,181 @@ def new_entry(L_dic, name, count_in, count_out, data):
     # function to add data and coords to target L dictionary and name
     L_dic[name]['data'].append(data)
     L_dic[name]['coords'][0].append(count_in)
-    L_dic[name]['coords'][1].append(count_out)      
+    L_dic[name]['coords'][1].append(count_out)   
+    
+    
+    
+@remote
+def L0_nu_task_ray(arglist):
+    
+    nu_element, nspins, shared_memory, shared_liouv = arglist
+    
+    # get current block from shared memory
+    current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
+    current_blocksize = len(current_element_block)
+    
+    # setup the Liouvillians for the current block   
+     
+    names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
+    L0_new ={name:sparse_constructor_dic((current_blocksize, current_blocksize)) for name in names}
+    
+    
+    # Loop through all elements in the same block
+    for count_in in range(current_blocksize):
+        # get element, of which we want the time derivative
+        element = current_element_block[count_in]
+        left = element[0:nspins+1] # left state, first index is photon number, rest is spin states
+        right = element[nspins+1:2*nspins+2] # right state
+        
+        # now loop through all matrix elements in the same block, to get L0 couplings
+        for count_out in range(current_blocksize):
+            # get "to couple" element
+            element_to_couple = current_element_block[count_out]
+            left_to_couple = element_to_couple[0:nspins+1]
+            right_to_couple = element_to_couple[nspins+1:2*nspins+2]
+            
+            # elements which differ in photon number by 2 will never couple:
+            if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
+                continue
+            
+            #-----------------------------
+            # get Liouvillian elements
+            #-----------------------------
+           
+            # L0 part from Hamiltonian
+            # Diagonal part
+            if (right_to_couple == right).all() and (left_to_couple == left).all():
+                s_down_right = sum(right[1:])
+                s_down_left = sum(left[1:])
+                new_entry(L0_new, 'H_n', count_in, count_out, -1j * (left[0]-right[0]))
+                new_entry(L0_new, 'H_sigmaz', count_in, count_out, 1j*(s_down_left-s_down_right))
+            
+            # offdiagonal parts
+            elif(states_compatible(right, right_to_couple)):
+                 # if they are compatible, permute left_to_couple appropriately for proper H element
+                 left_to_couple_permute = np.copy(left_to_couple)
+                 if not (right_to_couple == right).all():
+                     # if they are compatible but not equal, we need to permute left_to_couple appropriately, to get correct matrix element of H
+                     left_to_couple_permute[1:] = permute_compatible(right[1:],right_to_couple[1:],left_to_couple[1:])
+                     
+                 # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
+                 if (left[1:]==left_to_couple_permute[1:]).sum() != nspins-1:
+                     continue
+                 
+                 deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], left_to_couple_permute[1:]) # degeneracy from simulatneous spin permutations, which leave outer spins invariant
+                 # check if photon number in left state increases or decreases and
+                 # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
+                 if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
+                     new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]))
+                 elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
+                     new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
+                        
+            elif(states_compatible(left, left_to_couple)):            
+                 # if they are compatible, permute right_to_couple appropriately for proper H element
+                 right_to_couple_permute = np.copy(right_to_couple)
+                 if not (left_to_couple == left).all():
+                     right_to_couple_permute[1:] = permute_compatible(left[1:],left_to_couple[1:],right_to_couple[1:])
+                     
+                 # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
+                 if (right[1:]==right_to_couple_permute[1:]).sum() != nspins-1:
+                     continue
+                 deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], right_to_couple_permute[1:])
+                 # check if photon number in right state increases or decreases and
+                 # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
+                 if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
+                     new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
+                 elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
+                     new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
+
+            
+            
+            # L0 part from L[sigmam] -> -sigmap*sigmam*rho - rho*sigmap*sigmam
+            # make use of the fact that all spin indices contribute only, if left and right spin states in sigma^+sigma^- are both up
+            # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
+            if (right_to_couple == right).all() and (left_to_couple == left).all():
+                deg_right = degeneracy_spin_gamma(right_to_couple[1:nspins+1], right[1:nspins+1]) # degeneracy: because all spin up elements contribute equally
+                deg_left = degeneracy_spin_gamma(left_to_couple[1:nspins+1], left[1:nspins+1])
+                new_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
+            
+            # L0 part from L[sigmaz] -> whole dissipator
+            # Left and right states must be equal, because sigmaz is diagonal in the spins.
+            if (left_to_couple == left).all() and (right_to_couple == right).all():
+                equal = (left[1:nspins+1] == right[1:nspins+1]).sum()
+                new_entry(L0_new, 'sigmaz', count_in, count_out, 2*(equal - nspins))
+                
+            # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
+            if (left_to_couple == left).all() and (right_to_couple == right).all():
+                new_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
+
+ 
+    shared_liouv.append_L0.remote(nu_element, L0_new)
+
+             
+@remote
+def L1_nu_task_ray(arglist):
+    
+    nu_element, nspins, shared_memory, shared_liouv = arglist
+    
+    # get current block from shared memory
+    current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
+    next_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element+1))
+    
+    current_blocksize= len(current_element_block)
+    next_blocksize = len(next_element_block)
+    
+    # setup the Liouvillians for the current block   
+    names = ['sigmam', 'a']
+    L1_new ={name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
+    
+    # Loop through all elements in the same block
+    for count_in in range(current_blocksize):
+        # get element, of which we want the time derivative
+        element = current_element_block[count_in]
+        left = element[0:nspins+1] # left state, first index is photon number, rest is spin states
+        right = element[nspins+1:2*nspins+2] # right state
+         
+        # Now get L1 part -> coupling from nu_element to nu_element+1
+        # loop through all matrix elements in the next block we want to couple to
+        for count_out in range(next_blocksize):
+            
+            # get "to couple" element
+            element_to_couple = next_element_block[count_out]
+            left_to_couple = element_to_couple[0:nspins+1]
+            right_to_couple = element_to_couple[nspins+1:2*nspins+2]
+            
+            # elements which differ in photon number by 2 will never couple:
+            if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
+                continue
+            
+            #---------------------------------
+            # get Liouvillian elements
+            #--------------------------------
+            
+            # L1 part from L[sigmam] -> sigmam * rho * sigmap
+            # Photons must remain the same
+            if (left[0] == left_to_couple[0] and right[0] == right_to_couple[0]):
+                # we have to compute matrix elements of sigma^- and sigma^+. Therefore, check first if 
+                # number of spin up in "right" and "right_to_couple" as well as "left" and "left_to_coupole" vary by one
+                if (sum(left[1:]) - sum(left_to_couple[1:]) == 1) and (sum(right[1:]) - sum(right_to_couple[1:]) == 1):       
+                    # Get the number of permutations, that contribute.                             
+                    deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
+                    new_entry(L1_new, 'sigmam', count_in, count_out, deg)
+            
+            # L1 part from L[a] -> a * rho* adag
+            # since spins remain the same, first check if spin states match
+            # if spins match, then the element can couple, because we are looping through the block nu+1. Therefore
+            # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
+            if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
+                new_entry(L1_new, 'a', count_in, count_out,  np.sqrt((left[0]+1)*(right[0] + 1)))
+                
+    shared_liouv.append_L1.remote(nu_element, L1_new)
+
+
        
 @remote
 def calculate_L0_line_ray(arglist):
-    """ Calculate L0 part of element count_in in block nu_element """
+    """ Calculate L0 part of element count_in in block nu_element.
+    For setup_L_block_basis_ray"""
 
     nu_element, count_in, nspins, shared_memory  = arglist
 
@@ -979,7 +1233,8 @@ def calculate_L0_line_ray(arglist):
 
 @remote
 def calculate_L1_line_ray(arglist):
-    """ Calculate L1 part of element count_in in block nu_element """
+    """ Calculate L1 part of element count_in in block nu_element.
+    For setup_L_block_basis_ray"""
     
     #indices,count_in, nu_element = args_tuple
     nu_element, count_in,nspins, shared_memory = arglist
@@ -1207,7 +1462,7 @@ class Models(BlockL):
         
         
     
-    
+    # probably not necessary anymore, because serial version is very quick
     def setup_L_Tavis_Cummings_parallel(self, progress=False, save_path=None):
         t0 = time()
         print('Calculating Liouvillian for TC model from basis (parallel) ...', flush =True)
@@ -1253,6 +1508,7 @@ class Models(BlockL):
         elapsed = time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
         if save_path is not None:
+            print('Saving full model ...')
             with open(save_path, 'wb') as handle:
                 pickle.dump(self, handle)
             print(f'Wrote full model to {save_path}.')
