@@ -796,6 +796,9 @@ class BlockL:
        # setup shared memory
        shared_memory = SharedMemory.remote(indices.elements_block)
        
+       global elements_block
+       elements_block = indices.elements_block
+       
        num_blocks = len(indices.elements_block)
        
        # loop through all elements in block structure
@@ -867,6 +870,9 @@ class BlockL:
         
         # shared memory
         shared_memory = SharedMemory.remote(indices.elements_block)
+        
+        global elements_block
+        elements_block = indices.elements_block
 
         # shared memory of liouvillians
         shared_liouv = SharedLiouv.remote(num_blocks)
@@ -887,13 +893,35 @@ class BlockL:
         
         object_references_L1 = [L1_nu_task_ray.remote(args) for args in arglist]
         
-        # wait for processes
-        ray.get(object_references_L0)
-        ray.get(object_references_L1)
+        # # wait for processes
+        # ray.get(object_references_L0)
+        # ray.get(object_references_L1)
         
-        # the shared liouv should now have data and coords of all L
-        L0_basis_dic = ray.get(shared_liouv.L0_basis_dic.remote())
-        L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']        
+        # # the shared liouv should now have data and coords of all L
+        # L0_basis_dic = ray.get(shared_liouv.L0_basis_dic.remote())
+        # L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']        
+        
+        # for L0_new in L0_basis_dic:
+        #     for name in L0_names:
+        #         Lnew = L0_new[name]
+        #         data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+        #         self.L0_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+                
+        # L1_basis_dic = ray.get(shared_liouv.L1_basis_dic.remote())
+        # L1_names = ['a', 'sigmam']        
+        
+        # for L1_new in L1_basis_dic:
+        #     for name in L1_names:
+        #         Lnew = L1_new[name]
+        #         data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+        #         self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+        
+        # wait for processes
+        L0_basis_dic = ray.get(object_references_L0)
+        L1_basis_dic = ray.get(object_references_L1)
+        
+        L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']   
+        L1_names = ['a', 'sigmam']        
         
         for L0_new in L0_basis_dic:
             for name in L0_names:
@@ -901,9 +929,6 @@ class BlockL:
                 data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                 self.L0_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
                 
-        L1_basis_dic = ray.get(shared_liouv.L1_basis_dic.remote())
-        L1_names = ['a', 'sigmam']        
-        
         for L1_new in L1_basis_dic:
             for name in L1_names:
                 Lnew = L1_new[name]
@@ -965,7 +990,10 @@ def L0_nu_task_ray(arglist):
     nu_element, nspins, shared_memory, shared_liouv = arglist
     
     # get current block from shared memory
-    current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
+    # current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
+    
+    global elements_block
+    current_element_block = elements_block[nu_element]
     current_blocksize = len(current_element_block)
     
     # setup the Liouvillians for the current block   
@@ -1062,8 +1090,8 @@ def L0_nu_task_ray(arglist):
                 new_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
 
  
-    shared_liouv.append_L0.remote(nu_element, L0_new)
-
+    #shared_liouv.append_L0.remote(nu_element, L0_new)
+    return L0_new
              
 @remote
 def L1_nu_task_ray(arglist):
@@ -1071,8 +1099,12 @@ def L1_nu_task_ray(arglist):
     nu_element, nspins, shared_memory, shared_liouv = arglist
     
     # get current block from shared memory
-    current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
-    next_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element+1))
+    #current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
+    #next_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element+1))
+    
+    global elements_block
+    current_element_block = elements_block[nu_element]
+    next_element_block = elements_block[nu_element + 1]
     
     current_blocksize= len(current_element_block)
     next_blocksize = len(next_element_block)
@@ -1122,8 +1154,8 @@ def L1_nu_task_ray(arglist):
             if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
                 new_entry(L1_new, 'a', count_in, count_out,  np.sqrt((left[0]+1)*(right[0] + 1)))
                 
-    shared_liouv.append_L1.remote(nu_element, L1_new)
-
+    #shared_liouv.append_L1.remote(nu_element, L1_new)
+    return L1_new
 
        
 @remote
@@ -1133,10 +1165,13 @@ def calculate_L0_line_ray(arglist):
 
     nu_element, count_in, nspins, shared_memory  = arglist
 
-    # get current block from shared memory
+    # get current block from shared memory SLOW
     current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
-    
     current_blocksize = len(current_element_block)
+    
+    # global elements_block
+    # current_element_block = elements_block[nu_element]
+    # current_blocksize = len(current_element_block)
     
     # get element, of which we want the time derivative
     element = current_element_block[count_in]
@@ -1239,10 +1274,16 @@ def calculate_L1_line_ray(arglist):
     #indices,count_in, nu_element = args_tuple
     nu_element, count_in,nspins, shared_memory = arglist
     
-    # get current and next block from shared memory
-    current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
-    next_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element+1))
+    # get current and next block from shared memory SLOW
+    # current_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element))
+    # next_element_block = ray.get(shared_memory.elements_block_nu.remote(nu_element+1))
+
+    global elements_block
+    current_element_block = elements_block[nu_element]
+    next_element_block = elements_block[nu_element+1]
     
+    current_blocksize = len(current_element_block)
+    next_blocksize = len(next_element_block)
     
     # get element, of which we want the time derivative
     current_element = current_element_block[count_in]
@@ -1254,7 +1295,6 @@ def calculate_L1_line_ray(arglist):
     
     # Now get L1 part -> coupling from nu_element to nu_element+1
     # loop through all matrix elements in the next block we want to couple to
-    next_blocksize = len(next_element_block)
 
     names = ['sigmam', 'a']
     L1_line = {name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
