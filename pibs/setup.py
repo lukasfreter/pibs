@@ -70,8 +70,8 @@ class Indices:
         self.indices_elements_inv = {}
         self.mapping_block = []
         self.elements_block = []
-        self.difference_block = []
         self.difference_block_inv = []
+        self.coupled_photon_block = []
         
         # loading/saving paths
         if index_path is None:
@@ -117,7 +117,8 @@ class Indices:
         #get minimal list of left and right spin indices - in combined form (i.e. as a list of zetas)
         #Generate list of all unique zeta strings in reverse lexicographic order
         all_zetas = [np.zeros(self.nspins, dtype=int)]
-        max_zeta = 3 * (self.ldim_s-1) # e.g. spin-1/2 -> s = 0,1 and zeta = 0, 1, 2, 3 = 2s_L + s_R
+        # e.g. spin-1/2 -> s = 0,1 and zeta = 0, 1, 2, 3 = 2s_L + s_R
+        max_zeta = self.ldim_s**2 - 1 # (d_s-1)(d_s+1)
         self.recurse_lexi(all_zetas, 0, max_zeta)
        
         for count, zetas in enumerate(all_zetas):
@@ -153,13 +154,47 @@ class Indices:
         
         self.mapping_block = [ [] for _ in range(nu_max+1)] # list of nu_max+1 empty lists
         self.elements_block = [ [] for _ in range(nu_max+1)]
-        self.difference_block = [ [] for _ in range(nu_max+1)] # used to create difference_block_inv
-        self.difference_block_inv = {nu:[] for nu in range(nu_max+1)} # useful for rdm conversion matrix calculations
+        self.elements_block_inv = [ {} for _ in range(nu_max+1)]
+        difference_block = [ [] for _ in range(nu_max+1)] # used to create difference_block_inv
+        self.difference_block_inv = {nu:[] for nu in range(nu_max+1)} # used for rdm conversion calculations,
+        # contains index and difference between left and right spin states for each spin element
+        photon_block = [ [] for _ in range(nu_max+1)] # used to create coupled_photon_block
+        self.coupled_photon_block = [{} for _ in range(nu_max+1)] # at each nu, dictionary of key-values 
+        # where key is a photon state as a tuple i.e. |p1><p2| -> (p1,p2) and
+        # values is a pair of lists [same_block, below_block], where same_block
+        # is to contain all the photon states (tuples) that may couple to |p1><p2| at nu, 
+        # and below_block those states (tuples) that couple in the block below (via decay)
+        # [Construction lends to needing the state in excitation below rather than above]
+        coupled_photon_counts = {} # dictionary, elements under key (p1,p2) describe all photon 
+        # states (tuples) which |p1><p2| couples to
+
+        def get_coupled_counts(p1, p2):
+            """List all states coupled to |p1><p2| by physical processes
+            Returns [ same_block_counts, below_block_counts ], where same and below counts
+            indicate states in same and one lower excitation block, respectively
+            """
+            eye = (p1,p2) # act identically
+            dleft = (max(p1-1,0),p2) # destroy left (e.g. a sigma^+ in LM coupling)
+            cleft = (min(p1+1,nu_max),p2) # create left
+            dright = (p1,min(p2+1,nu_max)) # destroy right
+            cright = (p1,max(p2-1,0)) # create right
+            same_block_counts = list(set((eye, dleft, cleft, dright, cright))) # set removes any duplicates
+            below_block_counts = [eye] # photon count stays the same, spin decays
+            if p1 > 0 and p2 > 0: # e.g. |p1><p2|=|0><1| does NOT decay to |-1><0| !
+                below_block_counts.append((p1-1, p2-1)) # photon decay
+            return [ same_block_counts, below_block_counts ]
+        
+        # populate coupled_photon_counts dictionary and initialise coupled_photon_block 
+        for count_tuple in product(range(nu_max+1), range(nu_max+1)):
+            coupled_photon_counts[count_tuple] = get_coupled_counts(*count_tuple)
+            for nu in range(max(count_tuple), nu_max+1):
+                self.coupled_photon_block[nu][count_tuple] = [[],[]]
 
         for count in range(num_elements):
             element = self.indices_elements[count]
             left = element[0:self.nspins]
             right = element[self.nspins:2*self.nspins]
+            zetas = 2 * left + right
             m_left = self.nspins-sum(left)
             m_right = self.nspins-sum(right)
             num_diff = sum(left != right)
@@ -169,22 +204,47 @@ class Indices:
                 count_p2 = nu - m_right
                 element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
                 el = np.concatenate(([count_p1], left, [count_p2], right))
-                # can't use inverse here we sort the mapping block below :(
-                #self.difference_block_inv[num_diff].append((nu, len(self.mapping_block[nu])))
                 self.mapping_block[nu].append(element_index)
                 self.elements_block[nu].append(el)
-                self.difference_block[nu].append(num_diff)
+                # can't use inverse here we sort the mapping block below - instead
+                # note difference and fill difference_block_inv AFTER sorting
+                # below. Similar applies for photon_block to fill coupled_photon_block
+                #self.difference_block_inv[num_diff].append((nu, len(self.mapping_block[nu])))
+                difference_block[nu].append(num_diff)
+                photon_block[nu].append((count_p1, count_p2))
+
         # Re-order to match that of earlier implementations
         for nu in range(nu_max+1):
             # zip-sort-zip - a personal favourite Python One-Liner
             self.mapping_block[nu], self.elements_block[nu], \
-            self.difference_block[nu] =\
+            difference_block[nu], photon_block[nu] =\
                     zip(*sorted(zip(self.mapping_block[nu],
                                     self.elements_block[nu],
-                                    self.difference_block[nu])))
-            # have to populate inv AFTER sort
-            for i, num_diff in enumerate(self.difference_block[nu]):
+                                    difference_block[nu],
+                                    photon_block[nu])))
+            # have to populate difference and coupled photon indices AFTER sort
+            for i, num_diff in enumerate(difference_block[nu]):
                 self.difference_block_inv[num_diff].append((nu, i))
+            for i, count_tuple in enumerate(photon_block[nu]):
+                same_block_counts, below_block_counts = coupled_photon_counts[count_tuple]
+                for target_tuple in same_block_counts:
+                    try:
+                        self.coupled_photon_block[nu][target_tuple][0].append(i)
+                    except KeyError:
+                        pass # target_tuple does not exist in this excitation block!
+                        # e.g. |2><1| couples to |3><1| (create photon
+                        # in left state) at nu=3 but NOT nu=2
+                if nu == 0:
+                    # at lowest block already
+                    continue
+                for target_tuple in below_block_counts:
+                    try:
+                        # state at target_tuple in block below couples to count_tuple, so add index
+                        self.coupled_photon_block[nu-1][target_tuple][1].append(i)
+                    except KeyError:
+                        pass # e.g. |2><2| at nu=3 spin decay to nu=2 is valid
+                        # but |2><2| at nu=2 spin decay to nu=1 is NOT (since
+                        # |2><2| is not in the nu=1 block)
     
     def _to_hilbert(self, combined):
         """Convert zeta-string to |left> and <right| spin values"""
@@ -333,7 +393,7 @@ class BlockL:
                names = ['sigmam', 'a']
                L1_new ={name:self.sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
            
-           # Loop through all elements in the same block
+           # Loop through all elements in one block
            for count_in in range(current_blocksize):
                if progress:
                    bar.update()
@@ -342,16 +402,14 @@ class BlockL:
                left = element[0:indices.nspins+1] # left state, first index is photon number, rest is spin states
                right = element[indices.nspins+1:2*indices.nspins+2] # right state
                
-               # now loop through all matrix elements in the same block, to get L0 couplings
-               for count_out in range(current_blocksize):
+               photon_tuple = (left[0], right[0])
+               # Loop through all elements in the same block WITH compatible photon counts
+               coupled_counts_nu = indices.coupled_photon_block[nu_element][photon_tuple][0]
+               for count_out in coupled_counts_nu:
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element][count_out]
                    left_to_couple = element_to_couple[0:indices.nspins+1]
                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                   
-                   # elements which differ in photon number by 2 will never couple:
-                   if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                       continue
                    
                    #-----------------------------
                    # get Liouvillian elements
@@ -427,18 +485,16 @@ class BlockL:
                if nu_element == num_blocks -1:
                    continue
                 
-               # Now get L1 part -> coupling from nu_element to nu_element+1
-               # loop through all matrix elements in the next block we want to couple to
-               for count_out in range(next_blocksize):
+               # Now get L1 part -> coupling from nu_element to nu_element+1 loop through matrix
+               # elements in the next block WITH compatible photon counts (only photon number 
+               # unchanged -> spin decay or photon number decreased by one -> photon decay)
+               coupled_counts_nu_plus = indices.coupled_photon_block[nu_element][photon_tuple][1]
+               for count_out in coupled_counts_nu_plus:                   
                    
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element+1][count_out]
                    left_to_couple = element_to_couple[0:indices.nspins+1]
                    right_to_couple = element_to_couple[indices.nspins+1:2*indices.nspins+2]
-                   
-                   # elements which differ in photon number by 2 will never couple:
-                   if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                       continue
                    
                    #---------------------------------
                    # get Liouvillian elements
@@ -479,7 +535,7 @@ class BlockL:
     @staticmethod
     def calculate_L0_line(args_tuple):
         """ Calculate L0 part of element count_in in block nu_element """
-        global elements_block, new_entry, sparse_constructor_dic
+        global elements_block, new_entry, sparse_constructor_dic, coupled_photon_block_nu
         
         nu_element, count_in = args_tuple
 
@@ -496,16 +552,14 @@ class BlockL:
         L0_line = {name:sparse_constructor_dic((current_blocksize, current_blocksize)) for name in names}
         new_entry_func = lambda name, count_out, val: new_entry(L0_line, name, count_in, count_out, val)
         
-        # now loop through all matrix elements in the same block, to get L0 couplings
-        for count_out in range(current_blocksize):
+        photon_tuple = (left[0], right[0])
+        # Loop through all elements in the same block WITH compatible photon counts
+        coupled_counts_nu = coupled_photon_block_nu[photon_tuple][0]
+        for count_out in coupled_counts_nu:
             # get "to couple" element
             element_to_couple = current_element_block[count_out]
             left_to_couple = element_to_couple[0:nspins+1]
             right_to_couple = element_to_couple[nspins+1:2*nspins+2]
-            
-            # elements which differ in photon number by 2 will never couple:
-            if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                continue
             
             #-----------------------------
             # get Liouvillian elements
@@ -584,7 +638,7 @@ class BlockL:
         
         #indices,count_in, nu_element = args_tuple
         nu_element, count_in = args_tuple
-        global elements_block, new_entry, sparse_constructor_dic
+        global elements_block, new_entry, sparse_constructor_dic, coupled_photon_block_nu
         
         # get element, of which we want the time derivative
         current_element = elements_block[nu_element][count_in]
@@ -592,6 +646,7 @@ class BlockL:
     
         left = current_element[0:nspins+1] # left state, first index is photon number, rest is spin states
         right = current_element[nspins+1:2*nspins+2] # right state
+        photon_tuple = (left[0], right[0])
             
         
         # Now get L1 part -> coupling from nu_element to nu_element+1
@@ -602,15 +657,15 @@ class BlockL:
         names = ['sigmam', 'a']
         L1_line = {name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
         new_entry_func = lambda name, count_out, val: new_entry(L1_line, name, count_in, count_out, val)
-        for count_out in range(next_blocksize):
+        # Now get L1 part -> coupling from nu_element to nu_element+1 loop through matrix
+        # elements in the next block WITH compatible photon counts (only photon number 
+        # unchanged -> spin decay or photon number decreased by one -> photon decay)
+        coupled_counts_nu_plus = coupled_photon_block_nu[photon_tuple][1]
+        for count_out in coupled_counts_nu_plus:                   
             # get "to couple" element
             element_to_couple = next_element_block[count_out]
             left_to_couple = element_to_couple[0:nspins+1]
             right_to_couple = element_to_couple[nspins+1:2*nspins+2]
-            
-            # elements which differ in photon number by 2 will never couple:
-            if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
-                continue
             
             #---------------------------------
             # get Liouvillian elements
@@ -654,9 +709,10 @@ class BlockL:
                      for name in L0_names}
            
            arglist = []
-           global nspins, elements_block, sparse_constructor_dic, new_entry
+           global nspins, elements_block, sparse_constructor_dic, new_entry, coupled_photon_block_nu
            nspins  = indices.nspins
            elements_block = indices.elements_block
+           coupled_photon_block_nu = indices.coupled_photon_block[nu_element]
            sparse_constructor_dic = self.sparse_constructor_dic
            new_entry = self.new_entry
         #nu_element, count_in = args_tuple
@@ -728,6 +784,9 @@ class BlockL:
         L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
         L0_new ={name:sparse_constructor_dic((current_blocksize, current_blocksize)) for name in L0_names}
 
+        global coupled_photon_block_nu
+        coupled_photon_block_nu = coupled_photon_block[nu_element]
+
         for count_in in range(current_blocksize):
             L0_line = BlockL.calculate_L0_line((nu_element, count_in))
             
@@ -743,6 +802,9 @@ class BlockL:
     def L1_nu_task(nu_element):
         current_blocksize = len(elements_block[nu_element])
         next_blocksize = len(elements_block[nu_element+1])
+
+        global coupled_photon_block_nu
+        coupled_photon_block_nu = coupled_photon_block[nu_element]
 
         L1_names = ['sigmam', 'a']
         L1_new ={name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in L1_names}
@@ -760,9 +822,10 @@ class BlockL:
        """ Calculate Liouvillian basis in block form. Parallelized the calculation
        of each block"""
        num_blocks = len(indices.mapping_block)
-       global nspins, elements_block
+       global nspins, elements_block, coupled_photon_block
        nspins  = indices.nspins
        elements_block = indices.elements_block
+       coupled_photon_block = indices.coupled_photon_block
        
        # loop through all elements in block structure
        arglist = [nu for nu in range(num_blocks)]
@@ -1016,8 +1079,8 @@ def L0_nu_task_ray(arglist):
         left = element[0:nspins+1] # left state, first index is photon number, rest is spin states
         right = element[nspins+1:2*nspins+2] # right state
         
-        # now loop through all matrix elements in the same block, to get L0 couplings
-        for count_out in range(current_blocksize):
+        # Loop through all elements in the same block
+        for count_in in range(current_blocksize):
             # get "to couple" element
             element_to_couple = current_element_block[count_out]
             left_to_couple = element_to_couple[0:nspins+1]
@@ -1026,7 +1089,7 @@ def L0_nu_task_ray(arglist):
             # elements which differ in photon number by 2 will never couple:
             if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
                 continue
-            
+
             #-----------------------------
             # get Liouvillian elements
             #-----------------------------
@@ -1126,7 +1189,7 @@ def L1_nu_task_ray(arglist):
         element = current_element_block[count_in]
         left = element[0:nspins+1] # left state, first index is photon number, rest is spin states
         right = element[nspins+1:2*nspins+2] # right state
-         
+
         # Now get L1 part -> coupling from nu_element to nu_element+1
         # loop through all matrix elements in the next block we want to couple to
         for count_out in range(next_blocksize):
@@ -1139,7 +1202,6 @@ def L1_nu_task_ray(arglist):
             # elements which differ in photon number by 2 will never couple:
             if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
                 continue
-            
             #---------------------------------
             # get Liouvillian elements
             #--------------------------------
@@ -1201,7 +1263,7 @@ def calculate_L0_line_ray(arglist):
         # elements which differ in photon number by 2 will never couple:
         if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
             continue
-        
+
         #-----------------------------
         # get Liouvillian elements
         #-----------------------------
@@ -1315,7 +1377,7 @@ def calculate_L1_line_ray(arglist):
         # elements which differ in photon number by 2 will never couple:
         if abs(left_to_couple[0] - left[0]) > 1 or abs(right_to_couple[0] - right[0]) > 1:
             continue
-        
+
         #---------------------------------
         # get Liouvillian elements
         #--------------------------------
