@@ -724,21 +724,18 @@ class BlockL:
     def L0_nu_task(nu_element):
         current_blocksize = len(elements_block[nu_element])
         # setup the Liouvillians for the current block
+        
+        L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
+        L0_new ={name:sparse_constructor_dic((current_blocksize, current_blocksize)) for name in L0_names}
 
-        L0_new ={'sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                 'sigmam': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                 'a': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                 'H_n': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                 'H_sigmaz': np.zeros((current_blocksize, current_blocksize), dtype=complex),
-                 'H_g': np.zeros((current_blocksize, current_blocksize), dtype=complex)}
-        
-        
         for count_in in range(current_blocksize):
             L0_line = BlockL.calculate_L0_line((nu_element, count_in))
             
-            for name in L0_new:
-                L0_new[name][count_in,:] = L0_line[name]
-    
+            for name in L0_names:
+                L0_new[name]['data'].extend(L0_line[name]['data'])
+                L0_new[name]['coords'][0].extend(L0_line[name]['coords'][0])
+                L0_new[name]['coords'][1].extend(L0_line[name]['coords'][1])
+            
         return L0_new
 
                 
@@ -746,14 +743,16 @@ class BlockL:
     def L1_nu_task(nu_element):
         current_blocksize = len(elements_block[nu_element])
         next_blocksize = len(elements_block[nu_element+1])
-        L1_new = {'sigmam': np.zeros((current_blocksize, next_blocksize), dtype=complex),
-                  'a': np.zeros((current_blocksize, next_blocksize), dtype=complex)}
 
+        L1_names = ['sigmam', 'a']
+        L1_new ={name:sparse_constructor_dic((current_blocksize, next_blocksize)) for name in L1_names}
         
         for count_in in range(current_blocksize):
             L1_line = BlockL.calculate_L1_line((nu_element, count_in))
-            for name in L1_new:
-                L1_new[name][count_in,:] = L1_line[name]
+            for name in L1_names:
+                L1_new[name]['data'].extend(L1_line[name]['data'])
+                L1_new[name]['coords'][0].extend(L1_line[name]['coords'][0])
+                L1_new[name]['coords'][1].extend(L1_line[name]['coords'][1])
         
         return L1_new
 
@@ -771,17 +770,25 @@ class BlockL:
        with Pool(processes=self.num_cpus) as pool:
            L0s = pool.map(self.L0_nu_task, arglist)
        
-       for name in self.L0_basis:
-           for nu in range(num_blocks):
-               self.L0_basis[name].append(L0s[nu][name])
-       
        arglist = arglist[:-1] # not nu_max 
        with Pool(processes=self.num_cpus) as pool:
            L1s = pool.map(self.L1_nu_task, arglist)
            
-       for name in self.L1_basis:
-           for nu in range(num_blocks-1):
-               self.L1_basis[name].append(L1s[nu][name])
+           
+       L0_names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']   
+       L1_names = ['a', 'sigmam']        
+       
+       for L0_new in L0s:
+           for name in L0_names:
+               Lnew = L0_new[name]
+               data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+               self.L0_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
+               
+       for L1_new in L1s:
+           for name in L1_names:
+               Lnew = L1_new[name]
+               data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
+               self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
 
        print('done')
        
