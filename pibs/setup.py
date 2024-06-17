@@ -117,7 +117,8 @@ class Indices:
         #get minimal list of left and right spin indices - in combined form (i.e. as a list of zetas)
         #Generate list of all unique zeta strings in reverse lexicographic order
         all_zetas = [np.zeros(self.nspins, dtype=int)]
-        max_zeta = 3 * (self.ldim_s-1) # e.g. spin-1/2 -> s = 0,1 and zeta = 0, 1, 2, 3 = 2s_L + s_R
+        # e.g. spin-1/2 -> s = 0,1 and zeta = 0, 1, 2, 3 = 2s_L + s_R
+        max_zeta = self.ldim_s**2 - 1 # (d_s-1)(d_s+1)
         self.recurse_lexi(all_zetas, 0, max_zeta)
        
         for count, zetas in enumerate(all_zetas):
