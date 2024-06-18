@@ -271,6 +271,11 @@ class Indices:
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
         
         
+        
+       
+        
+    # DEBUGGING FUNCTIONs   
+        
     def print_elements(self):
         """ Print elements in each block """
         from pprint import pprint
@@ -281,6 +286,29 @@ class Indices:
                 right = self.elements_block[nu][i][self.nspins+2:]
                 xis = 2*left + right
                 print(f'{i}:',self.elements_block[nu][i], xis)
+                
+    def element_count(self):
+        """ Print the number of elements in each block """
+        sizeL0 = [len(block)**2 for block in self.mapping_block]
+        sizeL1 = [len(self.mapping_block[nu]) * len(self.mapping_block[nu+1]) for nu in range(len(self.mapping_block)-1)]
+        sizeL1.append(0)
+        total_loops = [sum(x) for x in zip(sizeL0, sizeL1)]
+        
+        loops_photon_trick = [0 for _ in range(len(self.mapping_block))]
+        for nu in range(len(self.mapping_block)):
+            count_nu = self.coupled_photon_block[nu]
+            for key in count_nu:
+                loops_photon_trick[nu] += len(count_nu[key][0]) + len(count_nu[key][1])
+        
+        ratio = [round(x[0] / x[1] * 100,2) for x in zip(loops_photon_trick, total_loops)]
+        
+        print('Number of elements:', [len(block) for block in self.mapping_block])
+        print('Size L0:', sizeL0)
+        print('Size L1:', sizeL1)
+        print('Total loops for L (no photon trick):  ',total_loops)
+        print('Total loops for L (with photon trick):', loops_photon_trick)
+        print('With trick / without trick (%): ', ratio)
+                
 
 
 class BlockL:
