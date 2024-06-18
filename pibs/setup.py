@@ -286,26 +286,31 @@ class Indices:
                 
     def element_count(self):
         """ Print the number of elements in each block """
-        sizeL0 = [len(block)**2 for block in self.mapping_block]
+        sizeL0 = np.array([len(block)**2 for block in self.mapping_block])
         sizeL1 = [len(self.mapping_block[nu]) * len(self.mapping_block[nu+1]) for nu in range(len(self.mapping_block)-1)]
         sizeL1.append(0)
-        total_loops = [sum(x) for x in zip(sizeL0, sizeL1)]
+        sizeL1 = np.array(sizeL1)
+        total_loops = sizeL0 + sizeL1
         
-        loops_photon_trick = [0 for _ in range(len(self.mapping_block))]
+        loops_photon_trick = np.zeros(len(self.mapping_block))
         for nu in range(len(self.mapping_block)):
             count_nu = self.coupled_photon_block[nu]
             for key in count_nu:
                 loops_photon_trick[nu] += len(count_nu[key][0]) + len(count_nu[key][1])
         
-        ratio = [round(x[0] / x[1] * 100,2) for x in zip(loops_photon_trick, total_loops)]
+        ratio = loops_photon_trick / total_loops
         
-        print('Number of elements:', [len(block) for block in self.mapping_block])
-        print('Size L0:', sizeL0)
-        print('Size L1:', sizeL1)
-        print('Total loops for L (no photon trick):  ',total_loops)
-        print('Total loops for L (with photon trick):', loops_photon_trick)
-        print('With trick / without trick (%): ', ratio)
-                
+        self.L_loops_total = total_loops
+        self.L_loops_photon = loops_photon_trick
+        
+        # print('Number of elements:', [len(block) for block in self.mapping_block])
+        # print('Size L0:', sizeL0)
+        # print('Size L1:', sizeL1)
+        # print('Total loops for L (no photon trick):  ',total_loops)
+        # print('Total loops for L (with photon trick):', loops_photon_trick)
+        # print('With trick / without trick (%): ', ratio)
+    
+                        
 
 
 class BlockL:
@@ -420,6 +425,7 @@ class BlockL:
        # loop through all elements in block structure
        counts_continued = [0 for nu in range(num_blocks)]
        counts_total = [0 for nu in range(num_blocks)]
+       
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
@@ -445,6 +451,8 @@ class BlockL:
                coupled_counts_nu = indices.coupled_photon_block[nu_element][photon_tuple][0]
                for count_out in coupled_counts_nu:
                    counts_total[nu_element] += 1
+                   contributed = False # keep track if element has coupled to any other element
+                   
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element][count_out]
                    left_to_couple = element_to_couple[0:indices.nspins+1]
@@ -456,6 +464,7 @@ class BlockL:
                   
                    # Diagonal parts
                    if (right_to_couple == right).all() and (left_to_couple == left).all():
+                       contributed = True
                        # L0 part from Hamiltonian
                        s_down_right = sum(right[1:])
                        s_down_left = sum(left[1:])
@@ -497,8 +506,12 @@ class BlockL:
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                         if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
                             self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]))
+                            contributed = True
                         elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
                             self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
+                            contributed = True
+
+
                                
                    elif(states_compatible(left, left_to_couple)):            
                         # if they are compatible, permute right_to_couple appropriately for proper H element
@@ -515,12 +528,13 @@ class BlockL:
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
                         if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
+                            contributed = True
                         elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
-                   else:
-                       counts_continued[nu_element] += 1
+                            contributed = True
 
-
+               if not contributed:
+                   counts_continued[nu_element]+=1
                    
                if nu_element == num_blocks -1:
                    continue
@@ -529,7 +543,9 @@ class BlockL:
                # elements in the next block WITH compatible photon counts (only photon number 
                # unchanged -> spin decay or photon number decreased by one -> photon decay)
                coupled_counts_nu_plus = indices.coupled_photon_block[nu_element][photon_tuple][1]
-               for count_out in coupled_counts_nu_plus:                   
+               for count_out in coupled_counts_nu_plus:    
+                   counts_total[nu_element] += 1
+                   contributed = False
                    
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element+1][count_out]
@@ -549,6 +565,7 @@ class BlockL:
                            # Get the number of permutations, that contribute.                             
                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
                            self.new_entry(L1_new, 'sigmam', count_in, count_out, deg)
+                           contributed = True
                    
                    # L1 part from L[a] -> a * rho* adag
                    # since spins remain the same, first check if spin states match
@@ -556,7 +573,10 @@ class BlockL:
                    # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
                        self.new_entry(L1_new, 'a', count_in, count_out,  np.sqrt((left[0]+1)*(right[0] + 1)))
-           
+                       contributed = True
+             
+               if not contributed:
+                    counts_continued[nu_element]+=1
             
            # append new blocks to the basis as sparse matrices (CSR format)
            for name in self.L0_basis:
@@ -570,8 +590,14 @@ class BlockL:
                    data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                    self.L1_basis[name].append(sp.coo_matrix((data,coords), shape=shape).tocsr())
        from pprint import pprint
+       
+       counts_total=np.array(counts_total)
+       counts_continued = np.array(counts_continued)
+       self.L_loops_photon = counts_total
+       self.L_loops_spin = counts_total - counts_continued
        print('Continued:',counts_continued)
-       print('Total:',counts_total)
+       print('Total (with photon trick):',counts_total)
+       
     
                 
     # functions for parallelization
