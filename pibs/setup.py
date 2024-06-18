@@ -158,7 +158,6 @@ class Indices:
         difference_block = [ [] for _ in range(nu_max+1)] # used to create difference_block_inv
         self.difference_block_inv = {nu:[] for nu in range(nu_max+1)} # used for rdm conversion calculations,
         # contains index and difference between left and right spin states for each spin element
-        photon_block = [ [] for _ in range(nu_max+1)] # used to create coupled_photon_block
         self.coupled_photon_block = [{} for _ in range(nu_max+1)] # at each nu, dictionary of key-values 
         # where key is a photon state as a tuple i.e. |p1><p2| -> (p1,p2) and
         # values is a pair of lists [same_block, below_block], where same_block
@@ -208,24 +207,23 @@ class Indices:
                 self.elements_block[nu].append(el)
                 # can't use inverse here we sort the mapping block below - instead
                 # note difference and fill difference_block_inv AFTER sorting
-                # below. Similar applies for photon_block to fill coupled_photon_block
+                # below. 
                 #self.difference_block_inv[num_diff].append((nu, len(self.mapping_block[nu])))
                 difference_block[nu].append(num_diff)
-                photon_block[nu].append((count_p1, count_p2))
 
         # Re-order to match that of earlier implementations
         for nu in range(nu_max+1):
             # zip-sort-zip - a personal favourite Python One-Liner
             self.mapping_block[nu], self.elements_block[nu], \
-            difference_block[nu], photon_block[nu] =\
+            difference_block[nu] =\
                     zip(*sorted(zip(self.mapping_block[nu],
                                     self.elements_block[nu],
-                                    difference_block[nu],
-                                    photon_block[nu])))
+                                    difference_block[nu])))
             # have to populate difference and coupled photon indices AFTER sort
             for i, num_diff in enumerate(difference_block[nu]):
                 self.difference_block_inv[num_diff].append((nu, i))
-            for i, count_tuple in enumerate(photon_block[nu]):
+            for i, element in enumerate(self.elements_block[nu]):
+                count_tuple = (element[0], element[self.nspins+1])
                 same_block_counts, below_block_counts = coupled_photon_counts[count_tuple]
                 for target_tuple in same_block_counts:
                     try:
@@ -382,6 +380,8 @@ class BlockL:
        #------------------------------------------------------
        
        # loop through all elements in block structure
+       counts_continued = [0 for nu in range(num_blocks)]
+       counts_total = [0 for nu in range(num_blocks)]
        for nu_element in range(num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
@@ -406,6 +406,7 @@ class BlockL:
                # Loop through all elements in the same block WITH compatible photon counts
                coupled_counts_nu = indices.coupled_photon_block[nu_element][photon_tuple][0]
                for count_out in coupled_counts_nu:
+                   counts_total[nu_element] += 1
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element][count_out]
                    left_to_couple = element_to_couple[0:indices.nspins+1]
@@ -433,6 +434,7 @@ class BlockL:
                             
                         # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
                         if (left[1:]==left_to_couple_permute[1:]).sum() != indices.nspins-1:
+                            counts_continued[nu_element] += 1
                             continue
                         
                         deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], left_to_couple_permute[1:]) # degeneracy from simulatneous spin permutations, which leave outer spins invariant
@@ -451,6 +453,7 @@ class BlockL:
                             
                         # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
                         if (right[1:]==right_to_couple_permute[1:]).sum() != indices.nspins-1:
+                            counts_continued[nu_element] += 1
                             continue
                         deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], right_to_couple_permute[1:])
                         # check if photon number in right state increases or decreases and
@@ -459,6 +462,8 @@ class BlockL:
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
                         elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
+                   else:
+                       counts_continued[nu_element] += 1
 
                    
                    
@@ -529,6 +534,9 @@ class BlockL:
                    Lnew = L1_new[name]
                    data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                    self.L1_basis[name].append(sp.coo_matrix((data,coords), shape=shape).tocsr())
+       from pprint import pprint
+       print(counts_continued)
+       print(counts_total)
     
                 
     # functions for parallelization
