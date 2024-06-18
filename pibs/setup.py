@@ -270,8 +270,7 @@ class Indices:
         
         
         
-       
-        
+      
     # DEBUGGING FUNCTIONs   
         
     def print_elements(self):
@@ -455,13 +454,30 @@ class BlockL:
                    # get Liouvillian elements
                    #-----------------------------
                   
-                   # L0 part from Hamiltonian
-                   # Diagonal part
+                   # Diagonal parts
                    if (right_to_couple == right).all() and (left_to_couple == left).all():
+                       # L0 part from Hamiltonian
                        s_down_right = sum(right[1:])
                        s_down_left = sum(left[1:])
                        self.new_entry(L0_new, 'H_n', count_in, count_out, -1j * (left[0]-right[0]))
                        self.new_entry(L0_new, 'H_sigmaz', count_in, count_out, 1j*(s_down_left-s_down_right))
+                       
+                       # L0 part from L[sigmam] -> -sigmap*sigmam*rho - rho*sigmap*sigmam
+                       # make use of the fact that all spin indices contribute only, if left and right spin states in sigma^+sigma^- are both up
+                       # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
+                       deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
+                       deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
+                       self.new_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
+                       
+                       # L0 part from L[sigmaz] -> whole dissipator
+                       # Left and right states must be equal, because sigmaz is diagonal in the spins.
+                       equal = (left[1:indices.nspins+1] == right[1:indices.nspins+1]).sum()
+                       self.new_entry(L0_new, 'sigmaz', count_in, count_out, 2*(equal - indices.nspins))
+                       
+                       # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
+                       self.new_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
+                       
+                       
                    
                    # offdiagonal parts
                    elif(states_compatible(right, right_to_couple)):
@@ -503,26 +519,6 @@ class BlockL:
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
                    else:
                        counts_continued[nu_element] += 1
-
-                   
-                   
-                   # L0 part from L[sigmam] -> -sigmap*sigmam*rho - rho*sigmap*sigmam
-                   # make use of the fact that all spin indices contribute only, if left and right spin states in sigma^+sigma^- are both up
-                   # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
-                   if (right_to_couple == right).all() and (left_to_couple == left).all():
-                       deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
-                       deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
-                       self.new_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
-                   
-                   # L0 part from L[sigmaz] -> whole dissipator
-                   # Left and right states must be equal, because sigmaz is diagonal in the spins.
-                   if (left_to_couple == left).all() and (right_to_couple == right).all():
-                       equal = (left[1:indices.nspins+1] == right[1:indices.nspins+1]).sum()
-                       self.new_entry(L0_new, 'sigmaz', count_in, count_out, 2*(equal - indices.nspins))
-                       
-                   # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
-                   if (left_to_couple == left).all() and (right_to_couple == right).all():
-                       self.new_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
 
 
                    
@@ -574,8 +570,8 @@ class BlockL:
                    data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                    self.L1_basis[name].append(sp.coo_matrix((data,coords), shape=shape).tocsr())
        from pprint import pprint
-       print(counts_continued)
-       print(counts_total)
+       print('Continued:',counts_continued)
+       print('Total:',counts_total)
     
                 
     # functions for parallelization
@@ -612,13 +608,28 @@ class BlockL:
             # get Liouvillian elements
             #-----------------------------
            
-            # L0 part from Hamiltonian
             # Diagonal part
             if (right_to_couple == right).all() and (left_to_couple == left).all():
+                # L0 part from Hamiltonian
                 s_down_right = sum(right[1:])
                 s_down_left = sum(left[1:])
                 new_entry_func('H_n', count_out, -1j * (left[0]-right[0]))
                 new_entry_func('H_sigmaz', count_out, 1j*(s_down_left-s_down_right))
+                
+                # L0 part from L[sigmam] -> -sigmap*sigmam*rho - rho*sigmap*sigmam
+                # make use of the fact that all spin indices contribute only, if left and right spin states in sigma^+sigma^- are both up
+                # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
+                deg_right = degeneracy_spin_gamma(right_to_couple[1:nspins+1], right[1:nspins+1]) # degeneracy: because all spin up elements contribute equally
+                deg_left = degeneracy_spin_gamma(left_to_couple[1:nspins+1], left[1:nspins+1])
+                new_entry_func('sigmam', count_out, - 1/2 * (deg_left+deg_right))
+                
+                # L0 part from L[sigmaz] -> whole dissipator
+                # Left and right states must be equal, because sigmaz is diagonal in the spins.
+                equal = (left[1:nspins+1] == right[1:nspins+1]).sum()
+                new_entry_func('sigmaz', count_out,  2*(equal - nspins))
+                    
+                # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
+                new_entry_func('a', count_out, -1/2*(left[0] + right[0]))
             
             # offdiagonal parts
             elif(states_compatible(right, right_to_couple)):
@@ -660,23 +671,7 @@ class BlockL:
     
             
             
-            # L0 part from L[sigmam] -> -sigmap*sigmam*rho - rho*sigmap*sigmam
-            # make use of the fact that all spin indices contribute only, if left and right spin states in sigma^+sigma^- are both up
-            # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
-            if (right_to_couple == right).all() and (left_to_couple == left).all():
-                deg_right = degeneracy_spin_gamma(right_to_couple[1:nspins+1], right[1:nspins+1]) # degeneracy: because all spin up elements contribute equally
-                deg_left = degeneracy_spin_gamma(left_to_couple[1:nspins+1], left[1:nspins+1])
-                new_entry_func('sigmam', count_out, - 1/2 * (deg_left+deg_right))
-            
-            # L0 part from L[sigmaz] -> whole dissipator
-            # Left and right states must be equal, because sigmaz is diagonal in the spins.
-            if (left_to_couple == left).all() and (right_to_couple == right).all():
-                equal = (left[1:nspins+1] == right[1:nspins+1]).sum()
-                new_entry_func('sigmaz', count_out,  2*(equal - nspins))
-                
-            # L0 part from L[a]     -> -adag*a*rho - rho*adag*a
-            if (left_to_couple == left).all() and (right_to_couple == right).all():
-                new_entry_func('a', count_out, -1/2*(left[0] + right[0]))
+
         return L0_line
 
     @staticmethod
