@@ -269,7 +269,18 @@ class Indices:
         # do some checks
         # at least tell user what they loaded
         print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
-
+        
+        
+    def print_elements(self):
+        """ Print elements in each block """
+        from pprint import pprint
+        for nu in range(len(self.mapping_block)):
+            print(30* '-', f'nu={nu}',30* '-')
+            for i in range(len(self.mapping_block[nu])):
+                left = self.elements_block[nu][i][1:self.nspins+1]
+                right = self.elements_block[nu][i][self.nspins+2:]
+                xis = 2*left + right
+                print(f'{i}:',self.elements_block[nu][i], xis)
 
 
 class BlockL:
@@ -1080,7 +1091,7 @@ def L0_nu_task_ray(arglist):
         right = element[nspins+1:2*nspins+2] # right state
         
         # Loop through all elements in the same block
-        for count_in in range(current_blocksize):
+        for count_out in range(current_blocksize):
             # get "to couple" element
             element_to_couple = current_element_block[count_out]
             left_to_couple = element_to_couple[0:nspins+1]
