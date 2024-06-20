@@ -76,10 +76,12 @@ def permute_compatible(comp1, comp2, permute):
         
     return cp_permute
 
-
-
 def degeneracy_spin_gamma(spin1, spin2):
-    """find the number of incdices where both spin1 and spin2 are up (=0)"""        
+    """Return number of indices where spin1 and spin2 are up"""
+    return np.count_nonzero(spin1+spin2==0)
+
+def degeneracy_spin_gamma_slow(spin1, spin2):
+    """find the number of indices where both spin1 and spin2 are up (=0)"""        
     # check indices, where the arrays have ones
     idx1 = np.where(spin1 == 0)[0]
     idx2 = np.where(spin2 == 0)[0]
