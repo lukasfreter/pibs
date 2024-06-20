@@ -463,7 +463,9 @@ class BlockL:
                    #-----------------------------
                   
                    # Diagonal parts
-                   if (right_to_couple == right).all() and (left_to_couple == left).all():
+                   right_equal = (right_to_couple == right).all()
+                   left_equal = (left_to_couple == left).all()
+                   if left_equal and right_equal: 
                        contributed = True
                        # L0 part from Hamiltonian
                        s_down_right = sum(right[1:])
@@ -492,7 +494,7 @@ class BlockL:
                    elif(states_compatible(right, right_to_couple)):
                         # if they are compatible, permute left_to_couple appropriately for proper H element
                         left_to_couple_permute = np.copy(left_to_couple)
-                        if not (right_to_couple == right).all():
+                        if not right_equal:
                             # if they are compatible but not equal, we need to permute left_to_couple appropriately, to get correct matrix element of H
                             left_to_couple_permute[1:] = permute_compatible(right[1:],right_to_couple[1:],left_to_couple[1:])
                             
@@ -504,10 +506,12 @@ class BlockL:
                         deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], left_to_couple_permute[1:]) # degeneracy from simulatneous spin permutations, which leave outer spins invariant
                         # check if photon number in left state increases or decreases and
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
-                        if (left[0] - left_to_couple[0]) == 1 and sum(left[1:])-sum(left_to_couple[1:]) == 1: # need matrix element of adag*sigmam
+                        left_photon_diff = left[0] - left_to_couple[0]
+                        left_spin_sum_diff = sum(left[1:])-sum(left_to_couple[1:])
+                        if left_photon_diff == 1 and left_spin_sum_diff == 1: # need matrix element of adag*sigmam
                             self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]))
                             contributed = True
-                        elif left[0] - left_to_couple[0] == -1 and sum(left[1:])-sum(left_to_couple[1:]) == -1 : # need matrix element of a*sigmap
+                        elif left_photon_diff == -1 and left_spin_sum_diff == -1 : # need matrix element of a*sigmap
                             self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
                             contributed = True
 
@@ -516,7 +520,7 @@ class BlockL:
                    elif(states_compatible(left, left_to_couple)):            
                         # if they are compatible, permute right_to_couple appropriately for proper H element
                         right_to_couple_permute = np.copy(right_to_couple)
-                        if not (left_to_couple == left).all():
+                        if not left_equal:
                             right_to_couple_permute[1:] = permute_compatible(left[1:],left_to_couple[1:],right_to_couple[1:])
                             
                         # Now first check, if the matrix element is nonzero. This is the case, if all the spins but one match up.
@@ -526,10 +530,12 @@ class BlockL:
                         deg = degeneracy_outer_invariant_optimized(left[1:], right[1:], right_to_couple_permute[1:])
                         # check if photon number in right state increases or decreases and
                         # if all but one spin agree, and that the spin that does not agree is down in right and up in right_to_couple
-                        if (right[0] - right_to_couple[0]) == 1 and sum(right[1:])-sum(right_to_couple[1:]) == 1: # need matrix element of a*sigmap
+                        right_photon_diff = right[0] - right_to_couple[0]
+                        right_spin_sum_diff = sum(right[1:])-sum(right_to_couple[1:])
+                        if right_photon_diff == 1 and right_spin_sum_diff == 1: # need matrix element of a*sigmap
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
                             contributed = True
-                        elif right[0] - right_to_couple[0] == -1 and sum(right[1:])-sum(right_to_couple[1:]) == -1: # need matrix element of adag*sigmam
+                        elif right_photon_diff == -1 and right_spin_sum_diff == -1: # need matrix element of adag*sigmam
                             self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
                             contributed = True
 

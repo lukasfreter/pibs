@@ -80,15 +80,6 @@ def degeneracy_spin_gamma(spin1, spin2):
     """Return number of indices where spin1 and spin2 are up"""
     return np.count_nonzero(spin1+spin2==0)
 
-def degeneracy_spin_gamma_slow(spin1, spin2):
-    """find the number of indices where both spin1 and spin2 are up (=0)"""        
-    # check indices, where the arrays have ones
-    idx1 = np.where(spin1 == 0)[0]
-    idx2 = np.where(spin2 == 0)[0]
-    common_elements = np.intersect1d(idx1,idx2)
-    
-    return len(common_elements)
-
 def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
     """Find simultaneous permutation of inner1 and inner2, such that all but one
     spin index align, and in exactly the same positions. This is necessary
