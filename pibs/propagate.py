@@ -240,7 +240,7 @@ class TimeEvolve():
 
         """
         tstart = time()
-        rho0, rhoff_func, t0, nu, chunksize, store_initial, rtol, atol = args_tuple
+        rho0, rhoff_func, t0, nu, chunksize, store_initial, rtol, atol, method = args_tuple
         dt = t[1]-t[0]
         
         if rhoff_func is None: # no feedforward -> block nu_max
@@ -252,7 +252,7 @@ class TimeEvolve():
             solver_times = np.zeros(chunksize)
         
             # integrator
-            r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
+            r = ode(_intfunc).set_integrator('zvode', method = method, atol=atol, rtol=rtol)
             r.set_initial_value(rho0,t0).set_f_params(L.L0[nu_max])
             
             # integrate
@@ -302,12 +302,14 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None):
+    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf'):
         """ Parallelize and minimize the amount of stored states. In this function, the synchronization
         between processes is done 'by hand'. Meaning, similar to the 'time_evolve_chunk' function,
         we loop through chunks, and for each iteration of the loop, a new parallel pool is being set up
         that makes use of the results from the previous chunk. To minimize memory usage, only one past chunk
         is being saved for each nu.
+        
+        method: 'bdf' = stiff, 'adams' = non-stiff
         """
         
         if expect_oper == None:
@@ -395,7 +397,7 @@ class TimeEvolve():
                 else:
                     save_initial = False
                 
-                arglist.append((initial[nu_max], None, t0_numax, nu_max, chunksize, save_initial, self.rtol, self.atol))
+                arglist.append((initial[nu_max], None, t0_numax, nu_max, chunksize, save_initial, self.rtol, self.atol, method))
             else:
                 finished[nu_max] = 1
                 
@@ -443,7 +445,7 @@ class TimeEvolve():
                     
                     feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
                     
-                    arglist.append((initial[nu], feedforward_func, t0_nu, nu, chunksize, save_initial, self.rtol,self.atol))
+                    arglist.append((initial[nu], feedforward_func, t0_nu, nu, chunksize, save_initial, self.rtol,self.atol,method))
                 else:
                     finished[nu] = 1
                   
@@ -568,9 +570,13 @@ class TimeEvolve():
         
      
         
-    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False):
+    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf'):
         """ Time evolution of the block structure without resetting the solver at each step.
-        Do so by interpolating feedforward."""
+        Do so by interpolating feedforward.
+        
+        method: 'bdf' = stiff, 'adams' = non-stiff
+        
+        """
         
         print('Starting time evolution serial block (interpolation)...')
         tstart = time()
@@ -605,7 +611,7 @@ class TimeEvolve():
         self.result.t[0] = t0            
         
         # first calculate block nu_max. Setup integrator
-        r = ode(_intfunc).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol)
+        r = ode(_intfunc).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol)
         r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[nu_max])
         
         # temporary variable to store states
@@ -655,7 +661,7 @@ class TimeEvolve():
             #rho_interp = interp1d(self.result.t, rhos[nu+1], bounds_error=False, fill_value="extrapolate") # extrapolate results from previous block
             rho_interp = interp1d(solver_times, rho_nu, bounds_error=False, fill_value="extrapolate") # interpolate results from previous block, rho_nu                  
                        
-            r = ode(_intfunc_block_interp).set_integrator('zvode', method = 'bdf', atol=self.atol, rtol=self.rtol)
+            r = ode(_intfunc_block_interp).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol)
             r.set_initial_value(self.rho.initial[nu],t0).set_f_params(self.L.L0[nu], self.L.L1[nu], rho_interp)
             
             #Record initial value
