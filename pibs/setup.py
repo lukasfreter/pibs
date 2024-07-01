@@ -273,10 +273,12 @@ class Indices:
       
     # DEBUGGING FUNCTIONs   
         
-    def print_elements(self):
+    def print_elements(self, numax=None):
         """ Print elements in each block """
         from pprint import pprint
-        for nu in range(len(self.mapping_block)):
+        if numax is None:
+            numax = len(self.mapping_block)
+        for nu in range(numax):
             print(30* '-', f'nu={nu}',30* '-')
             for i in range(len(self.mapping_block[nu])):
                 left = self.elements_block[nu][i][1:self.nspins+1]
