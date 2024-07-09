@@ -1731,7 +1731,7 @@ class Rho:
         # setup initial state
         t0 = time()
         print('Set up initial density matrix...')
-        self.initial = self.setup_initial(rho_p, rho_s)
+        self.setup_initial(rho_p, rho_s)
         
         # setup reduced density matrix
         print('Set up mappings to reduced density matrices at...')
@@ -1740,10 +1740,52 @@ class Rho:
             self.setup_convert_rho_block_nrs(nrs)
         elapsed= time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
+        
+    
+    
+    def setup_initial_full(self, rho_p, rho_s):
+        """
+        For debugging purposes: Calculate the full initial state in the compressed form,
+        i.e. NOT in the block form.
+
+        Parameters
+        ----------
+        rho_p : sparse array
+            Density matrix of initial photons state
+        rho_s : sparse array
+            density matrix of initial spin state
+
+        Returns
+        -------
+        rho_vec : np.array
+            Full initial state
+
+        """
+        indices = self.indices
+        num_elements = len(indices.indices_elements) # number of spin states
+        
+        rho_vec = np.zeros(indices.ldim_p*indices.ldim_p*num_elements, dtype = complex)    
+        for count_p1 in range(indices.ldim_p):
+            for count_p2 in range(indices.ldim_p):
+                for count in range(num_elements):
+                    element = indices.indices_elements[count]
+                    element_index = indices.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
+                    left = element[0:indices.nspins]
+                    right = element[indices.nspins:2*indices.nspins]
+                    rho_vec[element_index] = rho_p[count_p1, count_p2]
+                    for count_ns in range(indices.nspins):
+                        rho_vec[element_index] *= rho_s[left[count_ns], right[count_ns]]
+        return rho_vec
+        
+    
     
     def setup_initial(self, rho_p, rho_s):
         """Calculate the block representation of the initial state 
-        with photon in state rho_p and all spins in state rho_s"""
+        with photon in state rho_p and all spins in state rho_s.
+        
+        INEFFICIENT FUNCTION: firt calculate the full initial state in the compressed form
+                              and then convert to supercompressed block form.
+        """
         indices = self.indices
         num_elements = len(indices.indices_elements)
         blocks = len(indices.mapping_block)
@@ -1753,7 +1795,8 @@ class Rho:
         if np.isclose(rho_p[0,0],1) and np.isclose(rho_s[0,0],1):
             rho_vec = [np.zeros(len(i)) for i in indices.mapping_block]
             rho_vec[blocks-1][0] = 1
-            return rho_vec
+            self.initial = rho_vec
+            return
                 
         
         rho_vec = np.zeros(indices.ldim_p*indices.ldim_p*num_elements, dtype = complex)    
@@ -1771,9 +1814,40 @@ class Rho:
         # Now use the mapping list to get the desired block structure from the whole rho_vec:
         rho_vec_block = []
         for count in range(blocks):
-            rho_vec_block.append(rho_vec[indices.mapping_block[count]])
+            rho_vec_block.append(rho_vec[list(indices.mapping_block[count])])
         
-        return rho_vec_block   
+        self.initial = rho_vec_block   
+    
+    def setup_initial_efficient(self, rho_p, rho_s):
+        """
+        Setup initial state in block representation
+
+         Parameters
+         ----------
+         rho_p : sparse array
+             Density matrix of initial photons state
+         rho_s : sparse array
+             density matrix of initial spin state
+
+         Returns
+         -------
+         None
+
+        """
+        indices = self.indices
+        num_elements = len(indices.indices_elements)
+        blocks = len(indices.mapping_block)
+        
+        # Check for superfluoresence initial condition, i.e. zero photons and all spins up. 
+        # This is very easily initialized by all blocks zero, instead of the first entry of the last block
+        if np.isclose(rho_p[0,0],1) and np.isclose(rho_s[0,0],1):
+            rho_vec = [np.zeros(len(i)) for i in indices.mapping_block]
+            rho_vec[blocks-1][0] = 1
+            return rho_vec
+        
+        
+        
+        
     
     def setup_convert_rho_block_nrs(self, nrs):
         """Setup conversion matrix from supercompressed vector to vector form of
