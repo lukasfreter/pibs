@@ -1748,13 +1748,13 @@ class Rho:
         print(f'Complete {elapsed:.0f}s', flush=True)
         
         # for debugging: calculate initial state from Peter Kirton's code
-        t0 = time()
-        print('Set up initial density matrix (reference)')
-        self.initial_reference=self.setup_initial_old(rho_p, rho_s)
-        elapsed= time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
-        for nu in range(len(indices.mapping_block)):
-            assert np.allclose(self.initial[nu], self.initial_reference[nu], atol=1e-25)
+        # t0 = time()
+        # print('Set up initial density matrix (reference)')
+        # self.initial_reference=self.setup_initial_old(rho_p, rho_s)
+        # elapsed= time()-t0
+        # print(f'Complete {elapsed:.0f}s', flush=True)
+        # for nu in range(len(indices.mapping_block)):
+        #     assert np.allclose(self.initial[nu], self.initial_reference[nu], atol=1e-25)
         
         # setup reduced density matrix
         t0 = time()
