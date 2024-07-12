@@ -166,6 +166,9 @@ class Indices:
         # [Construction lends to needing the state in excitation below rather than above]
         coupled_photon_counts = {} # dictionary, elements under key (p1,p2) describe all photon 
         # states (tuples) which |p1><p2| couples to
+        
+        # for initial state calculation:
+        # self.elements_photon_diag = {nu: [] for nu in range(nu_max+1)}
 
         def get_coupled_counts(p1, p2):
             """List all states coupled to |p1><p2| by physical processes
@@ -190,12 +193,12 @@ class Indices:
                 self.coupled_photon_block[nu][count_tuple] = [[],[]]
 
         for count in range(num_elements):
-            element = self.indices_elements[count]
-            left = element[0:self.nspins]
-            right = element[self.nspins:2*self.nspins]
-            zetas = 2 * left + right
-            m_left = self.nspins-sum(left)
-            m_right = self.nspins-sum(right)
+            element = self.indices_elements[count]  # spin-element in compressed form
+            left = element[0:self.nspins]   # left spin indices
+            right = element[self.nspins:2*self.nspins] # right spin indices
+            zetas = 2 * left + right 
+            m_left = self.nspins-sum(left) # excitations in left spins
+            m_right = self.nspins-sum(right) # excitations in right spins
             num_diff = sum(left != right)
             nu_min = max(m_left, m_right) # can't have fewer than m_left+0 photons (or m_right+0photons) excitations
             for nu in range(nu_min, nu_max+1):
@@ -210,6 +213,11 @@ class Indices:
                 # below. 
                 #self.difference_block_inv[num_diff].append((nu, len(self.mapping_block[nu])))
                 difference_block[nu].append(num_diff)
+                
+                # for general initial state: store indices of elements, which have the same 
+                # number of photons in left and right state
+                # if count_p1 == count_p2:
+                #     self.elements_photon_diag[count_p1].append((nu, len(self.mapping_block[nu])-1))
 
         # Re-order to match that of earlier implementations
         for nu in range(nu_max+1):
@@ -1727,23 +1735,85 @@ class Rho:
         self.convert_rho_block_dic = {}
         self.initial= []
         
+        # debugging variables
+        self.initial_full = []
+        self.initial_reference = []
+        
         
         # setup initial state
         t0 = time()
         print('Set up initial density matrix...')
-        self.initial = self.setup_initial(rho_p, rho_s)
+        self.initial=self.setup_initial_efficient(rho_p, rho_s)
+        elapsed= time()-t0
+        print(f'Complete {elapsed:.0f}s', flush=True)
+        
+        # for debugging: calculate initial state from Peter Kirton's code
+        # t0 = time()
+        # print('Set up initial density matrix (reference)')
+        # self.initial_reference=self.setup_initial_old(rho_p, rho_s)
+        # elapsed= time()-t0
+        # print(f'Complete {elapsed:.0f}s', flush=True)
+        # for nu in range(len(indices.mapping_block)):
+        #     assert np.allclose(self.initial[nu], self.initial_reference[nu], atol=1e-25)
         
         # setup reduced density matrix
+        t0 = time()
         print('Set up mappings to reduced density matrices at...')
         for nrs in range(max_nrs+1):
             print(f'nrs = {nrs}...')
             self.setup_convert_rho_block_nrs(nrs)
         elapsed= time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
+        
     
-    def setup_initial(self, rho_p, rho_s):
+    
+    def setup_initial_full(self, rho_p, rho_s):
+        """
+        FOR DEBIGGING PURPOSES: Calculate the full initial state in the compressed form,
+        i.e. NOT in the block form.
+
+        Parameters
+        ----------
+        rho_p : sparse array
+            Density matrix of initial photons state
+        rho_s : sparse array
+            density matrix of initial spin state
+
+        Returns
+        -------
+        rho_vec : np.array
+            Full initial state
+
+        """
+        t0 = time()
+        print('Set up initial density matrix (full)')
+        indices = self.indices
+        num_elements = len(indices.indices_elements) # number of spin states
+        
+        rho_vec = np.zeros(indices.ldim_p*indices.ldim_p*num_elements, dtype = complex)    
+        for count_p1 in range(indices.ldim_p):
+            for count_p2 in range(indices.ldim_p):
+                for count in range(num_elements):
+                    element = indices.indices_elements[count]
+                    element_index = indices.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
+                    left = element[0:indices.nspins]
+                    right = element[indices.nspins:2*indices.nspins]
+                    rho_vec[element_index] = rho_p[count_p1, count_p2]
+                    for count_ns in range(indices.nspins):
+                        rho_vec[element_index] *= rho_s[left[count_ns], right[count_ns]]
+        elapsed = time()-t0
+        print(f'Complete {elapsed:.0f}s')
+        return rho_vec
+        
+    
+    
+    def setup_initial_old(self, rho_p, rho_s):
         """Calculate the block representation of the initial state 
-        with photon in state rho_p and all spins in state rho_s"""
+        with photon in state rho_p and all spins in state rho_s.
+        
+        INEFFICIENT FUNCTION: firt calculate the full initial state in the compressed form
+                              and then convert to supercompressed block form.
+        """
         indices = self.indices
         num_elements = len(indices.indices_elements)
         blocks = len(indices.mapping_block)
@@ -1771,9 +1841,96 @@ class Rho:
         # Now use the mapping list to get the desired block structure from the whole rho_vec:
         rho_vec_block = []
         for count in range(blocks):
-            rho_vec_block.append(rho_vec[indices.mapping_block[count]])
+            rho_vec_block.append(rho_vec[list(indices.mapping_block[count])])
         
         return rho_vec_block   
+    
+    def setup_initial_efficient(self, rho_p, rho_s):
+        """
+        Setup initial state in block representation, without first calculating
+        the initial state in the compressed form
+        
+        Comparison: N=20 takes 185s in compressed form. Efficient version basically instant.
+
+         Parameters
+         ----------
+         rho_p : sparse array
+             Density matrix of initial photons state
+         rho_s : sparse array
+             density matrix of initial spin state
+
+         Returns
+         -------
+         None
+
+        """
+
+        indices = self.indices
+        num_blocks = len(indices.mapping_block)
+        rho_vec = [np.zeros(len(i), dtype=complex) for i in indices.mapping_block] # initializing initial state
+
+        
+        # Check for superfluoresence initial condition, i.e. zero photons and all spins up. 
+        # This is very easily initialized by all blocks zero, instead of the first entry of the last block
+        if np.isclose(rho_p[0,0],1) and np.isclose(rho_s[0,0],1):
+            rho_vec[num_blocks-1][0] = 1
+            return rho_vec
+            
+        
+        # Next, check if photon density matrix is trivial, i.e. has a one somewhere on the diagonal.
+        # rho_s can be general
+        phot_diag = rho_p.diagonal()
+        p = np.where(phot_diag == 1)[0]
+        if len(p) == 1: # if there is a diagonal element of value 1 
+            num_phot = p[0] # number of photons in the cavity mode -> only states with that number of photons contribute to intial state
+
+            # Now need to loop through all elements.
+            for nu in range(num_blocks):
+                for element_count in range(len(indices.mapping_block[nu])):
+                    element = indices.elements_block[nu][element_count]
+                    p_left = element[0] # photons in left state
+                    p_right = element[indices.nspins+1] # photons in right state
+                    
+                    # Where left and right photons match num_phot, the 
+                    # entry can be nonzero, depending on the spin state
+                    if p_left == p_right and p_left == num_phot:
+                        rho_vec[nu][element_count] = 1                        
+                        s_left = element[1:indices.nspins+1] # left spin state
+                        s_right = element[indices.nspins+2:] # right spin state
+                        
+                        # loop through spin states and multiply all contributions
+                        for count_s in range(len(s_left)):
+                            rho_vec[nu][element_count] *= rho_s[s_left[count_s], s_right[count_s]]
+            return rho_vec
+            
+        
+        
+        # now completely general initial state; probably never needed, because we almost always
+        # set the photon number to zero in the beginning.
+        # Loop through all elements
+        print('GENERAL')
+        for nu in range(num_blocks):
+            for element_count in range(len(indices.mapping_block[nu])):
+                element = indices.elements_block[nu][element_count]
+                p_left = element[0] # photons in left state
+                p_right = element[indices.nspins+1] # photons in right state
+                
+                rho_vec[nu][element_count] = rho_p[p_left, p_right]
+
+                if rho_vec[nu][element_count] != 0:
+                    s_left = element[1:indices.nspins+1] # left spin state
+                    s_right = element[indices.nspins+2:] # right spin state
+                    
+                    # loop through spin states and multiply all contributions
+                    for count_s in range(len(s_left)):
+                        rho_vec[nu][element_count] *= rho_s[s_left[count_s], s_right[count_s]]
+        return rho_vec
+                        
+                        
+            
+        
+  
+        
     
     def setup_convert_rho_block_nrs(self, nrs):
         """Setup conversion matrix from supercompressed vector to vector form of
