@@ -9,6 +9,7 @@
 BlockL_backup.py
 butterworth_test.py
 solver_tol_test.py
+zvode_1dim_tol_test.py
 ode_reset.py
 mp_Array.py
 *cluster.py
