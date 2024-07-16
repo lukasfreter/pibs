@@ -10,7 +10,9 @@ BlockL_backup.py
 jc_mf.py
 butterworth_test.py
 solver_tol_test.py
+zvode_1dim_tol_test.py
 ode_reset.py
+jc_mf.py
 mp_Array.py
 *cluster.py
 *cluster.sh
