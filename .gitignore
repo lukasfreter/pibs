@@ -7,6 +7,7 @@
 !*.ipynb
 .ipynb_checkpoints
 BlockL_backup.py
+jc_mf.py
 butterworth_test.py
 solver_tol_test.py
 ode_reset.py
