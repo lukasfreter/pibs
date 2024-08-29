@@ -1878,6 +1878,7 @@ class Rho:
             
         
         # Next, check if photon density matrix is trivial, i.e. has a one somewhere on the diagonal.
+        # This is the most common use case for us, where there are exactly zero photons in the cavity mode.
         # rho_s can be general
         phot_diag = rho_p.diagonal()
         p = np.where(phot_diag == 1)[0]
