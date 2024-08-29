@@ -234,7 +234,7 @@ class TimeEvolve():
     def evolve_nu_parallel2(args_tuple):
         """
         Handles the time evolution of block nu_max and all other blocks nu, too.
-        Distinguish between those two cases by checkin,if a feedforward input is given.
+        Distinguish between those two cases by checking,if a feedforward input is given.
         
         This combined function enables the use of the multiprocessing Pool class.
 
@@ -312,9 +312,9 @@ class TimeEvolve():
         method: 'bdf' = stiff, 'adams' = non-stiff
         """
         
-        if expect_oper == None:
-            self.time_evolve_block(save_states=True, progress=progress)
-            return
+        # if expect_oper == None:
+        #     self.time_evolve_block(save_states=True, progress=progress)
+        #     return
        
         print(f'Starting time evolution in chunks (parallel 2), chunk size {chunksize}...')
         tstart = time()
@@ -323,7 +323,10 @@ class TimeEvolve():
         nu_max = num_blocks-1
         t0 = 0
         ntimes = round(self.tend/self.dt)+1
-        num_evolutions = int(np.ceil(ntimes/chunksize))+nu_max
+        num_evolutions = int(np.ceil(ntimes/chunksize))+nu_max # number of loops for progress bar
+        # some weird edge case, if chunksize divides ntimes
+        if ntimes % chunksize == 0:  
+            num_evolutions += 1
         if progress:
             bar = Progress(num_evolutions, description='Time evolution total progress...', start_step=0)
         
