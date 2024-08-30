@@ -482,7 +482,7 @@ class BlockL:
                    
                    sigmam_collective = 0
                    # check first term: right and right_to_couple must agree. Also left photon numbers must agree (spins dont act on photon space)
-                   if right_to_couple == right and left_to_couple[0]==left[0]: 
+                   if (right_to_couple == right).all() and left_to_couple[0]==left[0]: 
                        # optimize this double loop by going through all ordered pairs of (k,l) with k<l
                        for k in range(indices.nspins):
                            for l in range(indices.nspins):
@@ -507,7 +507,7 @@ class BlockL:
                                        left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
                                        right_spins_sorted = right[1:][sorted_indices]
                                        # crucial: is right_spins sorted = right?
-                                       if right_spins_sorted != right[1:]:
+                                       if not (right_spins_sorted == right[1:]).all():
                                            continue
                                    
                                    # Now need to check, if the above constructed element matches the to_couple element in question
@@ -517,7 +517,7 @@ class BlockL:
                                        sigmam_collective += deg * (-1/2)
                                        
                    # similarly the second term, completely analogous
-                   if left_to_couple == left and right_to_couple[0]==right[0]: 
+                   if (left_to_couple == left).all() and right_to_couple[0]==right[0]: 
                        # optimize this double loop by going through all ordered pairs of (k,l) with k<l
                        for k in range(indices.nspins):
                            for l in range(indices.nspins):
@@ -542,7 +542,7 @@ class BlockL:
                                        right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
                                        left_spins_sorted = left[1:][sorted_indices]
                                        # crucial: is left_spins sorted = left?
-                                       if left_spins_sorted != left[1:]:
+                                       if not (left_spins_sorted == left[1:]).all():
                                            continue
                                    
                                    # Now need to check, if the above constructed element matches the to_couple element in question
