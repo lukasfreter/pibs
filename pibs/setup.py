@@ -294,6 +294,17 @@ class Indices:
                 xis = 2*left + right
                 print(f'{i}:',self.elements_block[nu][i], xis)
                 
+    def print_spins(self):
+        """ Print all spin elements"""
+        print('Printing spins: (0=up, 1=down)')
+        count = 0
+        for element in self.indices_elements:
+            left = element[0:self.nspins]
+            right = element[self.nspins+1:]
+            xi = 2*left + right
+            print(f'{count}: {element}, xi: {xi}')
+            count +=1
+                
     def element_count(self):
         """ Print the number of elements in each block """
         sizeL0 = np.array([len(block)**2 for block in self.mapping_block])
@@ -1716,6 +1727,10 @@ class Models(BlockL):
         t0 = time()
         print('Calculating Liouvillian for TC model from basis ...', flush =True)
         
+        names0 = ['H_sigmaz', 'H_n', 'H_g','a', 'sigmam', 'sigmaz']
+        names1 = ['sigmam' , 'a']
+        
+        
         self.L0 = []
         self.L1 = []
         
@@ -1728,7 +1743,7 @@ class Models(BlockL):
             current_blocksize = len(self.indices.mapping_block[nu])
             #L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
             L0_scale = sp.csr_matrix((current_blocksize, current_blocksize), dtype=complex)
-            for name in self.L0_basis:
+            for name in names0:
                 L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
             self.L0.append( L0_scale)
             
@@ -1740,7 +1755,7 @@ class Models(BlockL):
                 #L1_scale = sp.csr_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
                 L1_scale = sp.csr_matrix((current_blocksize, next_blocksize), dtype=complex)
                 
-                for name in self.L1_basis:
+                for name in names1:
                     L1_scale = L1_scale + self.rates[name] * self.L1_basis[name][nu]
                 self.L1.append(L1_scale)   
                 
