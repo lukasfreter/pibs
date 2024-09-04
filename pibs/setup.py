@@ -97,10 +97,13 @@ class Indices:
         if debug is False:
             
             if only_numax: # check data/indices/numax
-                index_files = os.listdir(index_path + 'numax/')
-                if any([f == fname_numax for f in index_files]):
-                    self.load(index_path + 'numax/' + fname_numax)
-                    return
+                if os.path.isdir(index_path+'numax/'):
+                    index_files = os.listdir(index_path + 'numax/')
+                    if any([f == fname_numax for f in index_files]):
+                        self.load(index_path + 'numax/' + fname_numax)
+                        return
+                else:
+                    os.makedirs(index_path + 'numax/')
                 
             # check if an object with the same arguments already exists in data/indices/ folder
             index_files = os.listdir(index_path)
@@ -441,10 +444,13 @@ class BlockL:
         
         if debug is False:
             if indices.only_numax: # check, if we only need to load nu_max
-                liouv_files= os.listdir(liouv_path + 'numax/')
-                if (any([f == fname_numax for f in liouv_files])):
-                    self._load(liouv_path + 'numax/'+fname_numax, indices)
-                    return
+                if os.path.isdir(liouv_path + 'numax/'):
+                    liouv_files= os.listdir(liouv_path + 'numax/')
+                    if (any([f == fname_numax for f in liouv_files])):
+                        self._load(liouv_path + 'numax/'+fname_numax, indices)
+                        return
+                else:
+                    os.makedirs(liouv_path + 'numax/')
              
             # check if an object with the same arguments already exists in data/liouvillian/ folder
             liouv_files = os.listdir(liouv_path)

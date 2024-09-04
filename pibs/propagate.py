@@ -303,7 +303,10 @@ class TimeEvolve():
         
   
     def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf'):
-        """ Parallelize and minimize the amount of stored states. In this function, the synchronization
+        """ 
+        GOTO METHOD FOR PARALLEL TIME EVOLUTION
+        
+        Parallelize and minimize the amount of stored states. In this function, the synchronization
         between processes is done 'by hand'. Meaning, similar to the 'time_evolve_chunk' function,
         we loop through chunks, and for each iteration of the loop, a new parallel pool is being set up
         that makes use of the results from the previous chunk. To minimize memory usage, only one past chunk
