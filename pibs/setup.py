@@ -409,8 +409,17 @@ class BlockL:
     
     IF indices.only_numax is true, L0_basis and L0 have only one entry, and L1_basis and L1 have no entries
     (Not like in the spin indices case, where mapping_block e.g. has num_blocks - 1 empty arrays before nu_max block)
+    
+    L calculation in the case indices.only_numax = True only for
+        parallel=0
+        parallel=1
     """
     def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True, progress=False, liouv_path=None):
+        
+        if indices.only_numax:
+            if parallel > 1:
+                raise ValueError(f'For calculation with only nu_max, use parallel=0 or parallel=1. Parallel = {parallel} is not supported.')
+        
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
@@ -445,7 +454,7 @@ class BlockL:
             
         # if not, calculate them
         t0 = time()
-        pname = {0:'serial', 1:'parallel', 2:'parallel2 (WARNING: memory inefficient, testing only)',3:'ray module (lines)', 4: 'ray module (blocks)'}
+        pname = {0:'serial', 1:'parallel (lines)', 2:'parallel (blocks) (WARNING: memory inefficient, testing only)',3:'ray module (lines)', 4: 'ray module (blocks)'}
         pfunc = {0: self.setup_L_block_basis, 1: self.setup_L_block_basis_parallel,
                  2: self.setup_L_block_basis_parallel2,
                  3: self.setup_L_block_basis_ray,
@@ -992,14 +1001,25 @@ class BlockL:
     
     def setup_L_block_basis_parallel(self, indices, progress):
        """ Calculate Liouvillian basis in block form. Parallelize the calculation
-       of rows of the Liouvillian"""
+       of rows of the Liouvillian. Called when parallel=1.
+       
+       Note: progress bar does not get the right number of """
        num_blocks = len(indices.mapping_block)
        #multiprocessing.set_start_method('fork')
+    
+       updates = 0
        if progress:
            num_elements = sum([len(indices.mapping_block[nu]) for nu in range(num_blocks)])
-           bar = Progress(2*num_elements, 'Calculate L basis...') # 2 updates per block
+           bar = Progress(2*num_elements - len(indices.mapping_block[num_blocks-1]), 'Calculate L basis...') # 2 updates per block, except last block (there is no L1 for last block)
        # loop through all elements in block structure
-       for nu_element in range(num_blocks):
+       
+       
+       if indices.only_numax:
+           nu_min = num_blocks - 1 # only loop through last nu if only_numax=True
+       else:
+           nu_min = 0
+       
+       for nu_element in range(nu_min, num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
            
@@ -1018,7 +1038,7 @@ class BlockL:
         #nu_element, count_in = args_tuple
            for count_in in range(current_blocksize):
                arglist.append((nu_element, count_in))
-           #print(f'Block {nu_element}/{num_blocks}: {len(arglist)} args')
+           # print(f'Block {nu_element}/{num_blocks-1}: {len(arglist)} args')
            with Pool(processes=self.num_cpus) as pool:
                #print('Number of processes:', pool._processes)
                for L0_data in pool.imap(self.calculate_L0_line, arglist):
@@ -1028,6 +1048,7 @@ class BlockL:
                        L0_new[name]['coords'][1].extend(L0_data[name]['coords'][1])
                    if progress:
                        bar.update()
+                       updates +=1
            for name in L0_names:
                Lnew = L0_new[name]
                data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
@@ -1039,21 +1060,25 @@ class BlockL:
                L1_new = {name:self.sparse_constructor_dic((current_blocksize, next_blocksize))
                          for name in L1_names}
                with Pool(processes=self.num_cpus) as pool:
+
                    #print('Number of processes:', pool._processes)
                    for L1_data in pool.imap(self.calculate_L1_line, arglist):
                        for name in L1_names:
                            L1_new[name]['data'].extend(L1_data[name]['data'])
                            L1_new[name]['coords'][0].extend(L1_data[name]['coords'][0])
                            L1_new[name]['coords'][1].extend(L1_data[name]['coords'][1])
-                   if progress:
-                       bar.update()
+                       if progress:
+                           bar.update()
+                           updates+=1
                for name in L1_names:
                    Lnew = L1_new[name]
                    data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                    self.L1_basis[name].append(sp.coo_matrix((data, coords), shape=shape).tocsr())
-           else:
-               if progress:
-                   bar.update(2*num_elements-1)
+           # else:
+           #     if progress:
+           #         bar.update(2*num_elements-1)
+       # print(updates, num_elements*2 - len(indices.mapping_block[-1]))
+
            # Loop through all elements in the same block
            # for count_in in range(current_blocksize):
            #     L0_line = self.calculate_L0_line(indices, count_in, nu_element)
