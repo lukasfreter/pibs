@@ -405,6 +405,10 @@ class BlockL:
     This is convenient, because we can calculate the basis for a given N, Nphot
     once, and reuse them for all different values of the dissipation rates or energies
     in the hamiltonian.
+    
+    
+    IF indices.only_numax is true, L0_basis and L0 have only one entry, and L1_basis and L1 have no entries
+    (Not like in the spin indices case, where mapping_block e.g. has num_blocks - 1 empty arrays before nu_max block)
     """
     def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True, progress=False, liouv_path=None):
         # initialisation
@@ -430,7 +434,7 @@ class BlockL:
             if indices.only_numax: # check, if we only need to load nu_max
                 liouv_files= os.listdir(liouv_path + 'numax/')
                 if (any([f == fname_numax for f in liouv_files])):
-                    self._load(liouv_path + 'numax/'+filename, indices)
+                    self._load(liouv_path + 'numax/'+fname_numax, indices)
                     return
              
             # check if an object with the same arguments already exists in data/liouvillian/ folder
@@ -481,11 +485,9 @@ class BlockL:
         
         # at least tell user what they loaded
         if ind.only_numax:
-            print(f'Loaded Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
-            print('File: ', filepath)
+            print(f'Loaded Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath}')
         else:
-            print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
-            print('File: ', filepath)
+            print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath}')
 
     
     @staticmethod    
