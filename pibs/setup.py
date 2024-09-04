@@ -50,8 +50,19 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True, index_path=None, suppress_output=False):
-        """ debug: Do not load existing file, always calculate new set of indices"""
+    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True, index_path=None, suppress_output=False, only_numax = False):
+        """ 
+            nspins : number of spins
+            nphot : photon space dimension (here always set to nspins+1)
+            spin_dim : dimension of single spin (here always set to 2)
+            debug: Do not load existing file, always calculate new set of indices
+            save : If true, save spin indices for later use
+            index_path : path, where index file is stored
+            suppress_output : if true, do not print output to command line
+            only_numax : If true, calculate indices only for block with maximum excitation numbers. 
+                        This is interesting when solving a system with no losses, then we stay in the block 
+                        determined by initial conditions (which for sf initial conditions is nu_max)
+            """
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
             raise ValueError("Number of spins must be integer N > 0")
@@ -59,6 +70,7 @@ class Indices:
             raise ValueError("Number of photon states must be integer > 0")
         if spin_dim is not None and ((not isinstance(spin_dim, (int, np.integer))) or spin_dim <= 1):
              raise ValueError("Spin dimension must be integer > 1")
+
             
         if nphot is None:
             nphot = nspins + 1
@@ -73,12 +85,23 @@ class Indices:
         self.difference_block_inv = []
         self.coupled_photon_block = []
         
+        self.only_numax = only_numax
+        
         # loading/saving paths
         if index_path is None:
             index_path = 'data/indices/'
         filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
+        fname_numax = f'indices_numax_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl' # for the case only_numax =True
+        
         
         if debug is False:
+            
+            if only_numax: # check data/indices/numax
+                index_files = os.listdir(index_path + 'numax/')
+                if any([f == fname_numax for f in index_files]):
+                    self.load(index_path + 'numax/' + fname_numax)
+                    return
+                
             # check if an object with the same arguments already exists in data/indices/ folder
             index_files = os.listdir(index_path)
             if (any([f == filename for f in index_files])):
@@ -88,7 +111,7 @@ class Indices:
         # debug true -> always calculate spin indices anew, or if not save file is found
         # setup indices
         if not suppress_output:
-            print(f'Running setup indices with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+            print(f'Setting up spin indices with nspins={self.nspins},spin_dim={self.ldim_s}...', flush=True)
         t0 = time()
         self.list_equivalent_elements()
         elapsed = time()-t0
@@ -97,7 +120,10 @@ class Indices:
 
         # setup mapping block
         if not suppress_output:
-            print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+            if only_numax:
+                print(f'Running setup indices block (only nu_max) with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
+            else:
+                print(f'Running setup indices block with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
         t0 = time()
         self.setup_mapping_block()
         elapsed = time()-t0
@@ -106,7 +132,11 @@ class Indices:
         
         if save:
             # export for future use, if save is true
-            self.export(index_path + filename)
+            if only_numax:
+                self.export(index_path + 'numax/' + fname_numax)
+            else:
+                self.export(index_path + filename)
+                
         for nu in range(len(self.mapping_block)):
             assert len(self.mapping_block[nu]) == len(self.elements_block[nu])
                 
@@ -147,6 +177,10 @@ class Indices:
         condition is always all spins up and zero photons in the cavity.
         
         Structure of mapping_block = [ [indices of nu=0] , [indices of nu=1], ... [indices of nu_max] ]
+        
+        IF self.only_numax == True -> only get the block with nu_max. This block has each
+        element of self.indices_elements exactly once, which is because any spin configuration is allowed (in max. excitation block)
+        and the photon numbers then get just matched such that left and right excitations equal nu_max.
 
         """     
         num_elements = len(self.indices_elements)
@@ -201,6 +235,10 @@ class Indices:
             m_right = self.nspins-sum(right) # excitations in right spins
             num_diff = sum(left != right)
             nu_min = max(m_left, m_right) # can't have fewer than m_left+0 photons (or m_right+0photons) excitations
+            
+            if self.only_numax == True:
+                nu_min = nu_max
+            
             for nu in range(nu_min, nu_max+1):
                 count_p1 = nu - m_left
                 count_p2 = nu - m_right
@@ -220,7 +258,11 @@ class Indices:
                 #     self.elements_photon_diag[count_p1].append((nu, len(self.mapping_block[nu])-1))
 
         # Re-order to match that of earlier implementations
-        for nu in range(nu_max+1):
+        if self.only_numax == True:
+            nu_min = nu_max
+        else:
+            nu_min = 0
+        for nu in range(nu_min,nu_max+1):
             # zip-sort-zip - a personal favourite Python One-Liner
             self.mapping_block[nu], self.elements_block[nu], \
             difference_block[nu] =\
@@ -267,14 +309,18 @@ class Indices:
             
 
 
-
     def load(self, filepath):
         with open(filepath, 'rb') as handle:
             indices_load = pickle.load(handle)
         self.__dict__ = indices_load.__dict__
         # do some checks
         # at least tell user what they loaded
-        print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
+        if not hasattr(self, 'only_numax'):
+            self.only_numax = False # if the indices file loaded is an old one that does not have the attribute 'only_numax' yet, then set it to false.
+        if self.only_numax:
+            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} (only nu_max)')
+        else:
+            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
         
         
         
