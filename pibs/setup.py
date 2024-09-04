@@ -410,21 +410,29 @@ class BlockL:
         # initialisation
         self.L0_basis = {'sigmaz': [],
                          'sigmam': [],
-                         'sigmam_collective': [],
+                         #'sigmam_collective': [],
                          'a': [],
                          'H_n': [],
                          'H_sigmaz': [],
                          'H_g': []}
         self.L1_basis = {'sigmam': [],
-                         'sigmam_collective':[],
+                         #'sigmam_collective':[],
                          'a': []}
         self.num_cpus = num_cpus
+        
         
         if liouv_path is None:
             liouv_path = 'data/liouvillians/'
         filename = f'liouvillian_dicke_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
+        fname_numax = f'liouvillian_dicke_numax_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
         
         if debug is False:
+            if indices.only_numax: # check, if we only need to load nu_max
+                liouv_files= os.listdir(liouv_path + 'numax/')
+                if (any([f == fname_numax for f in liouv_files])):
+                    self._load(liouv_path + 'numax/'+filename, indices)
+                    return
+             
             # check if an object with the same arguments already exists in data/liouvillian/ folder
             liouv_files = os.listdir(liouv_path)
             if (any([f == filename for f in liouv_files])):
@@ -439,7 +447,10 @@ class BlockL:
                  3: self.setup_L_block_basis_ray,
                  4: self.setup_L_block_basis_ray2}
         try:
-            print(f'Calculating normalised Liouvillian {pname[parallel]}...')
+            if indices.only_numax:
+                print(f'Calculating normalised Liouvillian (only nu_max) {pname[parallel]}...')
+            else:
+                print(f'Calculating normalised Liouvillian {pname[parallel]}...')
             pfunc[parallel](indices, progress)
         except KeyError as e:
             print('Argument parallel={parallel} not recognised')
@@ -449,7 +460,10 @@ class BlockL:
         
         if save:
             # export normalized Liouvillians for later use, if save is true
-            self.export(liouv_path+filename)
+            if indices.only_numax:
+                self.export(liouv_path+'numax/'+fname_numax)
+            else:
+                self.export(liouv_path+filename)
         
         
     
@@ -466,7 +480,13 @@ class BlockL:
         self.L1_basis = L_load.L1_basis
         
         # at least tell user what they loaded
-        print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
+        if ind.only_numax:
+            print(f'Loaded Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
+            print('File: ', filepath)
+        else:
+            print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s}')
+            print('File: ', filepath)
+
     
     @staticmethod    
     def sparse_constructor_dic(shape):
@@ -495,15 +515,23 @@ class BlockL:
        counts_continued = [0 for nu in range(num_blocks)]
        counts_total = [0 for nu in range(num_blocks)]
        
-       for nu_element in range(num_blocks):
+       if indices.only_numax:
+           nu_min = num_blocks -1  # num_blocks = nu_max + 1
+       else:
+           nu_min = 0
+       
+       for nu_element in range(nu_min, num_blocks):
            current_blocksize = len(indices.mapping_block[nu_element])
            # setup the Liouvillians for the current block
-           names = ['sigmaz', 'sigmam','sigmam_collective', 'a', 'H_n', 'H_sigmaz', 'H_g']
+           # names = ['sigmaz', 'sigmam','sigmam_collective', 'a', 'H_n', 'H_sigmaz', 'H_g']
+           names = ['sigmaz', 'sigmam', 'a', 'H_n', 'H_sigmaz', 'H_g']
+
            L0_new ={name:self.sparse_constructor_dic((current_blocksize, current_blocksize)) for name in names}
            if nu_element < num_blocks-1:
                next_blocksize = len(indices.mapping_block[nu_element+1])
                # Liouvillian terms coupling to next block
-               names = ['sigmam','sigmam_collective', 'a']
+               # names = ['sigmam','sigmam_collective', 'a']
+               names = ['sigmam', 'a']
                L1_new ={name:self.sparse_constructor_dic((current_blocksize, next_blocksize)) for name in names}
            
            # Loop through all elements in one block
@@ -531,84 +559,89 @@ class BlockL:
                    # get Liouvillian elements
                    #-----------------------------
                    
-                   # collective decay (makes only sense for nspins > 1)
-                   left_to_couple_spins = left_to_couple[1:]
-                   right_to_couple_spins = right_to_couple[1:]
-                   left_spins = left[1:]
-                   right_spins = right[1:]
                    
-                   sigmam_collective = 0
-                   # check first term: right and right_to_couple must agree. Also left photon numbers must agree (spins dont act on photon space)
-                   if (right_to_couple == right).all() and left_to_couple[0]==left[0]: 
-                       # optimize this double loop by going through all ordered pairs of (k,l) with k<l
-                       for k in range(indices.nspins):
-                           for l in range(indices.nspins):
-                               if l==k: # l==k is handled in individual loss, not collective
-                                   continue
-                               # we first need to check now, if given the left spins m, if for k,l there is a chance for coupling
-                               # condition: m_k = up, m_l = down
-                               if left_spins[k] == 0 and left_spins[l] == 1: 
-                                   # if the condition is met, we know that the to_couple element must have flipped spins in k and l!
-                                   # Construct this 'trial' left array of spins
-                                   left_spins_couple_trial = np.copy(left_spins)
-                                   left_spins_couple_trial[k] = 1   # j_k is down
-                                   left_spins_couple_trial[l] = 0   # j_l is up
+                   #______________________________________________________________________________
+
+                   # COLLECTIVE DECAY
+                   
+                   # collective decay (makes only sense for nspins > 1)
+                   # left_to_couple_spins = left_to_couple[1:]
+                   # right_to_couple_spins = right_to_couple[1:]
+                   # left_spins = left[1:]
+                   # right_spins = right[1:]
+                   
+                   # sigmam_collective = 0
+                   # # check first term: right and right_to_couple must agree. Also left photon numbers must agree (spins dont act on photon space)
+                   # if (right_to_couple == right).all() and left_to_couple[0]==left[0]: 
+                   #     # optimize this double loop by going through all ordered pairs of (k,l) with k<l
+                   #     for k in range(indices.nspins):
+                   #         for l in range(indices.nspins):
+                   #             if l==k: # l==k is handled in individual loss, not collective
+                   #                 continue
+                   #             # we first need to check now, if given the left spins m, if for k,l there is a chance for coupling
+                   #             # condition: m_k = up, m_l = down
+                   #             if left_spins[k] == 0 and left_spins[l] == 1: 
+                   #                 # if the condition is met, we know that the to_couple element must have flipped spins in k and l!
+                   #                 # Construct this 'trial' left array of spins
+                   #                 left_spins_couple_trial = np.copy(left_spins)
+                   #                 left_spins_couple_trial[k] = 1   # j_k is down
+                   #                 left_spins_couple_trial[l] = 0   # j_l is up
                                    
-                                   # Now it can be, that the resulting density matrix element rho_{j, m'} does not appear in our list, because of wrong
-                                   # ordering. Therefore, calculate xi's, and see if we need to reorder (reordering is only allowed, if m' is left invariant!)
-                                   # xis are ordered from big to small.
-                                   xis = 2 * left_spins_couple_trial + right[1:]
-                                   sorted_indices = np.flip(np.argsort(xis)) # flip, because argsort sorts from small to big
-                                   if not np.all(sorted_indices[:-1] <= sorted_indices[1:]): # check, if sorted_indices is NOT monotonically increasing
-                                       # need to perform the sorting permutation on the spins
-                                       left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
-                                       right_spins_sorted = right[1:][sorted_indices]
-                                       # crucial: is right_spins sorted = right?
-                                       if not (right_spins_sorted == right[1:]).all():
-                                           continue
+                   #                 # Now it can be, that the resulting density matrix element rho_{j, m'} does not appear in our list, because of wrong
+                   #                 # ordering. Therefore, calculate xi's, and see if we need to reorder (reordering is only allowed, if m' is left invariant!)
+                   #                 # xis are ordered from big to small.
+                   #                 xis = 2 * left_spins_couple_trial + right[1:]
+                   #                 sorted_indices = np.flip(np.argsort(xis)) # flip, because argsort sorts from small to big
+                   #                 if not np.all(sorted_indices[:-1] <= sorted_indices[1:]): # check, if sorted_indices is NOT monotonically increasing
+                   #                     # need to perform the sorting permutation on the spins
+                   #                     left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
+                   #                     right_spins_sorted = right[1:][sorted_indices]
+                   #                     # crucial: is right_spins sorted = right?
+                   #                     if not (right_spins_sorted == right[1:]).all():
+                   #                         continue
                                    
-                                   # Now need to check, if the above constructed element matches the to_couple element in question
-                                   if (left_to_couple_spins == left_spins_couple_trial).all():
-                                       # need degeneracy
-                                       deg = degeneracy_outer_invariant_optimized(left_spins, right_spins, left_to_couple_spins)
-                                       sigmam_collective += deg * (-1/2)
+                   #                 # Now need to check, if the above constructed element matches the to_couple element in question
+                   #                 if (left_to_couple_spins == left_spins_couple_trial).all():
+                   #                     # need degeneracy
+                   #                     deg = degeneracy_outer_invariant_optimized(left_spins, right_spins, left_to_couple_spins)
+                   #                     sigmam_collective += deg * (-1/2)
                                        
-                   # similarly the second term, completely analogous
-                   if (left_to_couple == left).all() and right_to_couple[0]==right[0]: 
-                       # optimize this double loop by going through all ordered pairs of (k,l) with k<l
-                       for k in range(indices.nspins):
-                           for l in range(indices.nspins):
-                               if l==k: # l==k is handled in individual loss, not collective
-                                   continue
-                               # we first need to check now, if given the right spins m', if for k,l there is a chance for coupling
-                               # condition: m'_k = up, m'_l = down
-                               if right_spins[k] == 0 and right_spins[l] == 1: 
-                                   # if the condition is met, we know that the to_couple element must have flipped spins in k and l!
-                                   # Construct this 'trial' right array of spins
-                                   right_spins_couple_trial = np.copy(right_spins)
-                                   right_spins_couple_trial[k] = 1   # j_k is down
-                                   right_spins_couple_trial[l] = 0   # j_l is up
+                   # # similarly the second term, completely analogous
+                   # if (left_to_couple == left).all() and right_to_couple[0]==right[0]: 
+                   #     # optimize this double loop by going through all ordered pairs of (k,l) with k<l
+                   #     for k in range(indices.nspins):
+                   #         for l in range(indices.nspins):
+                   #             if l==k: # l==k is handled in individual loss, not collective
+                   #                 continue
+                   #             # we first need to check now, if given the right spins m', if for k,l there is a chance for coupling
+                   #             # condition: m'_k = up, m'_l = down
+                   #             if right_spins[k] == 0 and right_spins[l] == 1: 
+                   #                 # if the condition is met, we know that the to_couple element must have flipped spins in k and l!
+                   #                 # Construct this 'trial' right array of spins
+                   #                 right_spins_couple_trial = np.copy(right_spins)
+                   #                 right_spins_couple_trial[k] = 1   # j_k is down
+                   #                 right_spins_couple_trial[l] = 0   # j_l is up
                                    
-                                   # Now it can be, that the resulting density matrix element rho_{m, j} does not appear in our list, because of wrong
-                                   # ordering. Therefore, calculate xi's, and see if we need to reorder (reordering is only allowed, if m is left invariant!)
-                                   # xis are ordered from big to small.
-                                   xis = 2 * left[1:] + right_spins_couple_trial
-                                   sorted_indices = np.flip(np.argsort(xis)) # flip, because argsort sorts from small to big
-                                   if not np.all(sorted_indices[:-1] <= sorted_indices[1:]): # check, if sorted_indices is NOT monotonically increasing
-                                       # need to perform the sorting permutation on the spins
-                                       right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
-                                       left_spins_sorted = left[1:][sorted_indices]
-                                       # crucial: is left_spins sorted = left?
-                                       if not (left_spins_sorted == left[1:]).all():
-                                           continue
+                   #                 # Now it can be, that the resulting density matrix element rho_{m, j} does not appear in our list, because of wrong
+                   #                 # ordering. Therefore, calculate xi's, and see if we need to reorder (reordering is only allowed, if m is left invariant!)
+                   #                 # xis are ordered from big to small.
+                   #                 xis = 2 * left[1:] + right_spins_couple_trial
+                   #                 sorted_indices = np.flip(np.argsort(xis)) # flip, because argsort sorts from small to big
+                   #                 if not np.all(sorted_indices[:-1] <= sorted_indices[1:]): # check, if sorted_indices is NOT monotonically increasing
+                   #                     # need to perform the sorting permutation on the spins
+                   #                     right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
+                   #                     left_spins_sorted = left[1:][sorted_indices]
+                   #                     # crucial: is left_spins sorted = left?
+                   #                     if not (left_spins_sorted == left[1:]).all():
+                   #                         continue
                                    
-                                   # Now need to check, if the above constructed element matches the to_couple element in question
-                                   if (right_to_couple_spins == right_spins_couple_trial).all():
-                                       # need degeneracy
-                                       deg = degeneracy_outer_invariant_optimized(left_spins, right_spins, right_to_couple_spins)
-                                       sigmam_collective += deg * (-1/2)
+                   #                 # Now need to check, if the above constructed element matches the to_couple element in question
+                   #                 if (right_to_couple_spins == right_spins_couple_trial).all():
+                   #                     # need degeneracy
+                   #                     deg = degeneracy_outer_invariant_optimized(left_spins, right_spins, right_to_couple_spins)
+                   #                     sigmam_collective += deg * (-1/2)
                     
-                                       
+                   # __________________________________________________________________________
  
                   
                    # Diagonal parts
@@ -627,8 +660,8 @@ class BlockL:
                        # also make use of the fact that sigma^+sigma^- is diagonal, so the two terms rho*sigma^+sigma^- and sigma^+sigma^-*rho are equal
                        deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
                        deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
-                       sigmam_collective += -1/2 * (deg_left + deg_right)
-                       self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, sigmam_collective)                    
+                       # sigmam_collective += -1/2 * (deg_left + deg_right)
+                       # self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, sigmam_collective)                    
 
                        self.new_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
                        
@@ -717,37 +750,36 @@ class BlockL:
                    # get Liouvillian elements
                    #--------------------------------
                    
-                   # collective decay
-                   sigmam_collective = 0
-                   # Photons must remain the same
-                   if (left[0] == left_to_couple[0] and right[0] == right_to_couple[0]):
-                       for k in range(indices.nspins):
-                           for l in range(indices.nspins):
-                               if k == l :
-                                   continue
-                               # the spins m, m' of the element we want to calculate the derivative of, sets the following constraint
-                               if left_spins[k] == 1 and right_spins[l] == 1: # m_k = down, m'_l = down
-                                   # construct "trial" spin states, which have those two spins flipped (which is a requirement for coupling)
-                                   left_spins_couple_trial = np.copy(left_spins)
-                                   left_spins_couple_trial[k] = 0   # j_k is up
-                                   right_spins_couple_trial = np.copy(right_spins)
-                                   right_spins_couple_trial[l] = 0   # w_l is up
+                   
+                   #------------------------------------------------------------------
+                   # COLLECTIVE DECAY
+                   # sigmam_collective = 0
+                   # # Photons must remain the same
+                   # if (left[0] == left_to_couple[0] and right[0] == right_to_couple[0]):
+                   #     for k in range(indices.nspins):
+                   #         for l in range(indices.nspins):
+                   #             if k == l :
+                   #                 continue
+                   #             # the spins m, m' of the element we want to calculate the derivative of, sets the following constraint
+                   #             if left_spins[k] == 1 and right_spins[l] == 1: # m_k = down, m'_l = down
+                   #                 # construct "trial" spin states, which have those two spins flipped (which is a requirement for coupling)
+                   #                 left_spins_couple_trial = np.copy(left_spins)
+                   #                 left_spins_couple_trial[k] = 0   # j_k is up
+                   #                 right_spins_couple_trial = np.copy(right_spins)
+                   #                 right_spins_couple_trial[l] = 0   # w_l is up
                                    
-                                   # get the emerging element in proper order
-                                   xis = 2*left_spins_couple_trial + right_spins_couple_trial
-                                   sorted_indices = np.flip(np.argsort(xis))
-                                   # check if not sorted
-                                   if not np.all(sorted_indices[:-1] <= sorted_indices[1:]):
-                                       left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
-                                       right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
+                   #                 # get the emerging element in proper order
+                   #                 xis = 2*left_spins_couple_trial + right_spins_couple_trial
+                   #                 sorted_indices = np.flip(np.argsort(xis))
+                   #                 # check if not sorted
+                   #                 if not np.all(sorted_indices[:-1] <= sorted_indices[1:]):
+                   #                     left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
+                   #                     right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
                                    
-                                   # check, if it agrees with the to_couple element
-                                   if (left_to_couple_spins == left_spins_couple_trial).all() and (right_to_couple_spins == right_spins_couple_trial).all():
-                                       sigmam_collective += 1
-                   
-                   
-                   
-                   
+                   #                 # check, if it agrees with the to_couple element
+                   #                 if (left_to_couple_spins == left_spins_couple_trial).all() and (right_to_couple_spins == right_spins_couple_trial).all():
+                   #                     sigmam_collective += 1
+                #-------------------------------------------------------------------------------
                    
                    
                    
@@ -760,8 +792,8 @@ class BlockL:
                            # Get the number of permutations, that contribute.                             
                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
                            self.new_entry(L1_new, 'sigmam', count_in, count_out, deg)
-                           sigmam_collective += deg
-                           self.new_entry(L1_new, 'sigmam_collective', count_in, count_out, sigmam_collective)
+                           # sigmam_collective += deg
+                           # self.new_entry(L1_new, 'sigmam_collective', count_in, count_out, sigmam_collective)
 
                            contributed = True
                    
@@ -1771,7 +1803,10 @@ class Models(BlockL):
     
     def setup_L_Tavis_Cummings(self, progress=False, save_path=None):
         t0 = time()
-        print('Calculating Liouvillian for TC model from basis ...', flush =True)
+        if self.indices.only_numax:
+            print('Calculating Liouvillian for TC model from basis (only nu_max) ...', flush =True)
+        else:
+            print('Calculating Liouvillian for TC model from basis ...', flush =True)
         
         names0 = ['H_sigmaz', 'H_n', 'H_g','a', 'sigmam', 'sigmaz']
         names1 = ['sigmam' , 'a']
@@ -1784,13 +1819,23 @@ class Models(BlockL):
         
         if progress: # progress bar
             bar = Progress(2*num_blocks-1,'Liouvillian: ')
+            
+        # Adapt loop if only_numax is true
+        if self.indices.only_numax:
+            nu_min = num_blocks - 1
+        else:
+            nu_min = 0
         
-        for nu in range(num_blocks):
+        for nu in range(nu_min, num_blocks):
             current_blocksize = len(self.indices.mapping_block[nu])
             #L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
             L0_scale = sp.csr_matrix((current_blocksize, current_blocksize), dtype=complex)
             for name in names0:
-                L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
+                if self.indices.only_numax:
+                    L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][0] # in Liouvillian basis, if only_numax is true, only one matrix is contained (i.e. different than mapping_block, which has nu_max-1 unfilled matrices, such that the old indices still work)
+                else:
+                    L0_scale = L0_scale + self.rates[name] * self.L0_basis[name][nu]
+
             self.L0.append( L0_scale)
             
             if progress:
