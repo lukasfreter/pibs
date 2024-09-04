@@ -592,7 +592,10 @@ class TimeEvolve():
         ntimes = round(self.tend/self.dt)+1
         
         if progress:
-            bar = Progress(2*(ntimes-1)*num_blocks, description='Time evolution under L...', start_step=1)
+            if self.indices.only_numax:
+                bar = Progress(2*ntimes, description='Time evolution under L (only numax)...', start_step=1)
+            else:
+                bar = Progress(2*(ntimes-1)*num_blocks, description='Time evolution under L...', start_step=1)
         if save_states is None:
             save_states = True if expect_oper is None else False
         if not save_states and expect_oper is None:
@@ -615,7 +618,11 @@ class TimeEvolve():
         
         # first calculate block nu_max. Setup integrator
         r = ode(_intfunc).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol)
-        r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[nu_max])
+        
+        if self.indices.only_numax:
+            r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[0])
+        else:
+            r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[nu_max])
         
         # temporary variable to store states
         #rhos = [ np.zeros((len(self.indices.mapping_block[i]), ntimes), dtype=complex) for i in range(num_blocks)]
@@ -657,7 +664,10 @@ class TimeEvolve():
             self.result.rho[nu_max][:,1] = rho_nu[:,-1] 
             
         #self.result.t = np.arange(t0, self.tend+self.dt,self.dt)
-   
+        if self.indices.only_numax:
+            elapsed = time()-tstart
+            print(f'Complete {elapsed:.0f}s', flush=True)
+            return
         
         # Now, do the feed forward for all other blocks. Need different integration function, _intfunc_block_interp
         for nu in range(num_blocks-2, -1,-1):           

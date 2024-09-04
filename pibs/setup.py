@@ -488,9 +488,21 @@ class BlockL:
     def _load(self, filepath,ind):
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
-            
-        self.L0_basis = L_load.L0_basis
-        self.L1_basis = L_load.L1_basis
+        
+        
+        if (not hasattr(L_load.indices, 'only_numax')):
+            loaded_only_numax = False # If loaded L does not have attribute only_numax, set to False.
+        else:
+            loaded_only_numax = L_load.indices.only_numax
+        if loaded_only_numax == False and ind.only_numax == True:
+            # In this case, we loaded a full L basis, but only need the largest block!
+            for names in L_load.L0_basis:
+                self.L0_basis[names] = [L_load.L0_basis[names][-1]]
+                self.L1_basis = []
+        else:
+        
+            self.L0_basis = L_load.L0_basis
+            self.L1_basis = L_load.L1_basis
         
         # at least tell user what they loaded
         if ind.only_numax:
@@ -1002,8 +1014,7 @@ class BlockL:
     def setup_L_block_basis_parallel(self, indices, progress):
        """ Calculate Liouvillian basis in block form. Parallelize the calculation
        of rows of the Liouvillian. Called when parallel=1.
-       
-       Note: progress bar does not get the right number of """
+       """
        num_blocks = len(indices.mapping_block)
        #multiprocessing.set_start_method('fork')
     
