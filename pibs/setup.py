@@ -503,6 +503,7 @@ class BlockL:
         if loaded_only_numax == False and ind.only_numax == True:
             # In this case, we loaded a full L basis, but only need the largest block!
             for names in L_load.L0_basis:
+                # print(L_load.L0_basis['sigmam_collective'])
                 self.L0_basis[names] = [L_load.L0_basis[names][-1]]
                 self.L1_basis = []
         else:
