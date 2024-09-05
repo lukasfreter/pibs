@@ -315,6 +315,10 @@ class TimeEvolve():
         method: 'bdf' = stiff, 'adams' = non-stiff
         """
         
+        if self.indices.only_numax:
+            print('Parallel time evolution not implemented for only_numax. Starting serial time evolution instead...')
+            self.time_evolve_block_interp(expect_oper, progress = progress, save_states=save_states, method=method)
+        
         # if expect_oper == None:
         #     self.time_evolve_block(save_states=True, progress=progress)
         #     return
