@@ -306,24 +306,29 @@ class Indices:
 
     def export(self, filepath):
         print(f'Storing Indices for later use in {filepath} ...')
+        t0 = time()
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
-        print('Storing complete')
+        elapsed = time() - t0
+        print(f'Storing complete {elapsed:.1f}s')
             
 
 
     def load(self, filepath):
+        print(f'Loading indices file {filepath} ...')
+        t0 = time()
         with open(filepath, 'rb') as handle:
             indices_load = pickle.load(handle)
         self.__dict__ = indices_load.__dict__
+        elapsed = time() - t0
         # do some checks
         # at least tell user what they loaded
         if not hasattr(self, 'only_numax'):
             self.only_numax = False # if the indices file loaded is an old one that does not have the attribute 'only_numax' yet, then set it to false.
         if self.only_numax:
-            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} (only nu_max)')
+            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} (only nu_max) {elapsed:.1f}s')
         else:
-            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s}')
+            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} {elapsed:.1f}s')
         
         
         
@@ -487,15 +492,23 @@ class BlockL:
         
     
     def export(self, filepath):
+        print(f'Storing Liouvillian basis for later use in {filepath} ...', flush=True)
+        t0 = time()
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
-        print(f'Storing Liouvillian basis for later use in {filepath}')
+        elapsed = time() - t0
+        print(f'Storing complete {elapsed:.1f}', flush=True)
             
     def _load(self, filepath,ind):
+        t0 = time()
+        if ind.only_numax:
+            print(f'Loading Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath} ...', flush=True)
+        else:
+            print(f'Loading Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath} ...', flush = True)
+
+        
         with open(filepath, 'rb') as handle:
             L_load = pickle.load(handle)
-        
-        
         if (not hasattr(L_load.indices, 'only_numax')):
             loaded_only_numax = False # If loaded L does not have attribute only_numax, set to False.
         else:
@@ -511,11 +524,9 @@ class BlockL:
             self.L0_basis = L_load.L0_basis
             self.L1_basis = L_load.L1_basis
         
+        elapsed = time() - t0
         # at least tell user what they loaded
-        if ind.only_numax:
-            print(f'Loaded Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath}')
-        else:
-            print(f'Loaded Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath}')
+        print(f'Loading complete {elapsed:.1f}', flush=True)
 
     
     @staticmethod    
