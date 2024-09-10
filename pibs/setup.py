@@ -427,6 +427,7 @@ class BlockL:
         if indices.only_numax:
             if parallel > 1:
                 raise ValueError(f'For calculation with only nu_max, use parallel=0 or parallel=1. Parallel = {parallel} is not supported.')
+                
         
         # initialisation
         self.L0_basis = {'sigmaz': [],
@@ -1840,6 +1841,11 @@ class Models(BlockL):
     def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True, num_cpus=None, liouv_path=None):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
+        
+        if indices.only_numax == True:
+            if kappa != 0 or gamma != 0 :
+                print(r'WARNING: only_numax is set true, but kappa = {kappa}, gamma = {gamma}. Set kappa = 0, gamma = 0 for physical results.'.format(kappa=kappa,gamma=gamma))
+        
         self.rates = {'H_n': wc,
                       'H_sigmaz': w0,
                       'H_g': g,
@@ -1861,6 +1867,9 @@ class Models(BlockL):
         t0 = time()
         if self.indices.only_numax:
             print('Calculating Liouvillian for TC model from basis (only nu_max) ...', flush =True)
+            if progress:
+                progress = False
+                print('Disabled progress bar (only one step)')
         else:
             print('Calculating Liouvillian for TC model from basis ...', flush =True)
         
@@ -1874,7 +1883,8 @@ class Models(BlockL):
         num_blocks = len(self.indices.mapping_block)
         
         if progress: # progress bar
-            bar = Progress(2*num_blocks-1,'Liouvillian: ')
+            loops = 2*num_blocks-1
+            bar = Progress(loops,'Liouvillian: ')
             
         # Adapt loop if only_numax is true
         if self.indices.only_numax:
