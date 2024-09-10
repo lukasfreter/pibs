@@ -2058,7 +2058,7 @@ class Rho:
         Calculation of expectation values
     """
         
-    def __init__(self, rho_p, rho_s, indices, max_nrs=1, scale_rho=None):
+    def __init__(self, rho_p, rho_s, indices, max_nrs=1, scale_rho=1):
         assert type(max_nrs) == int, "Argument 'max_nrs' must be int"
         assert max_nrs >= 0, "Argument 'max_nrs' must be non-negative"
         assert indices.nspins >= max_nrs, "Number of spins in reduced density matrix "\
@@ -2082,11 +2082,11 @@ class Rho:
         elapsed= time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
         
-        if scale_rho is not None:
+        if self.scale_rho != 1:
             t0 = time()
-            print('Scaling initial density matrix by {scale_rho} ...')
+            print(f'Scaling initial density matrix by {self.scale_rho} ...')
             for nu in range(len(self.initial)):
-                self.initial[nu] = self.initial[nu] * scale_rho
+                self.initial[nu] = self.initial[nu] * self.scale_rho
         elapsed= time()-t0
         print(f'Complete {elapsed:.0f}s', flush=True)
         

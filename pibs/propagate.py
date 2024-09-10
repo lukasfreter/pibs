@@ -753,7 +753,7 @@ class TimeEvolve():
             one_output = [] 
             rhos_converted = rhos_converted_dic[nrs]
             for count in range(len(rho_list)):
-                one_output.append(expect(rhos_converted[count], op))
+                one_output.append(expect(rhos_converted[count], op) / self.rho.scale_rho)    # added scale functionality
             output.append(one_output)
         return output
     
