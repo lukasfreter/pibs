@@ -126,11 +126,14 @@ class TimeEvolve():
         self.result = Results()
         
         # should we store rho and L like this ? Or give as parameters when calling .time_evolve_block?
-        self.rho = rho
+        self.rho = rho # this makes just a reference to the rho object.
         self.L = L
         
         # fix this later
         self.indices = rho.indices
+        
+
+        
         
     
     
