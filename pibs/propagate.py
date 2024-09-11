@@ -117,7 +117,7 @@ class TimeEvolve():
         discard the states, such that memory usage can be minimized.
         """
         
-    def __init__(self, rho, L, tend, dt, atol=1e-5, rtol=1e-5):
+    def __init__(self, rho, L, tend, dt, atol=1e-5, rtol=1e-5, nsteps=500):
         self.tend = tend
         self.dt = dt
         self.atol = atol
@@ -131,6 +131,8 @@ class TimeEvolve():
         
         # fix this later
         self.indices = rho.indices
+        
+        self.nsteps=nsteps # number of steps per solver iteration. Standard value is 500 see https://stackoverflow.com/questions/40788747/internal-working-of-scipy-integrate-ode
         
 
         
@@ -627,7 +629,7 @@ class TimeEvolve():
         self.result.t[0] = t0            
         
         # first calculate block nu_max. Setup integrator
-        r = ode(_intfunc).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol)
+        r = ode(_intfunc).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol, nsteps=self.nsteps)
         
         if self.indices.only_numax:
             r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[0])
@@ -684,7 +686,7 @@ class TimeEvolve():
             #rho_interp = interp1d(self.result.t, rhos[nu+1], bounds_error=False, fill_value="extrapolate") # extrapolate results from previous block
             rho_interp = interp1d(solver_times, rho_nu, bounds_error=False, fill_value="extrapolate") # interpolate results from previous block, rho_nu                  
                        
-            r = ode(_intfunc_block_interp).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol)
+            r = ode(_intfunc_block_interp).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol, nsteps=self.nsteps)
             r.set_initial_value(self.rho.initial[nu],t0).set_f_params(self.L.L0[nu], self.L.L1[nu], rho_interp)
             
             #Record initial value
