@@ -2228,6 +2228,10 @@ class Rho:
         if np.isclose(rho_p[0,0],1) and np.isclose(rho_s[0,0],1):
             rho_vec[num_blocks-1][0] = 1
             return rho_vec
+        # Check for complementary condition of nu_max photons and all spins down 
+        if np.isclose(rho_p[-1,-1],1) and np.isclose(rho_s[-1,-1],1):
+            rho_vec[num_blocks-1][-1] = 1
+            return rho_vec
             
         
         # Next, check if photon density matrix is trivial, i.e. has a one somewhere on the diagonal.
