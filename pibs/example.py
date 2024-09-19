@@ -35,19 +35,19 @@ import scipy.sparse as sp
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls =40#int(sys.argv[1])#number 2LS
+ntls =20#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 1.0
-wc = 1.0#0.65
-Omega = 0.4
+wc = 0.65
+Omega = 0.1N#0.4
 g = Omega / np.sqrt(ntls)
-kappa = 0#1e-02
-gamma = 0#1e-03
-gamma_phi =0#3e-02
+kappa = 1e-02
+gamma = 1e-03
+gamma_phi = 0.0075
 gamma_phi_qutip = 4*gamma_phi
 
-dt = 0.02 # timestep
-tmax = 10 # for optimum usage of chunks in parallel evolution
+dt = 0.2 # timestep
+tmax = 200-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-10
@@ -58,7 +58,7 @@ nsteps=1000
 indi = Indices(ntls, debug=True, save = False)
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = np.pi/2
+theta = 0#np.pi/2
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -80,7 +80,8 @@ ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
 
-evolve.time_evolve_block_interp(ops, progress = True)
+# evolve.time_evolve_block_interp(ops, progress = True)
+evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
@@ -99,7 +100,7 @@ ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamm
 
 # ax.legend()
 plt.show()
-sys.exit()
+# sys.exit()
     
 
 
@@ -122,6 +123,8 @@ params = {
     'theta': theta,
     'chunksize':chunksize,
     'nsteps': nsteps,
+    'atol':atol,
+    'rtol':rtol,
     
     }
 res = {
@@ -134,7 +137,7 @@ data = {
         'results': res,
         'runtime': runtime}
 
-fname = f'results/sr_theta90deg/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
+fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
 #fname = f'results/{params["method"]}.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
