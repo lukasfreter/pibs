@@ -230,6 +230,28 @@ def _multinominal(bins):
     return combinations
 
 
+def wigner_d(theta, j, n, m):
+    """ Calculate small Wigner d matrix d_{n,m}^j(theta) """
+    from math import factorial
+    smin = int(max(0, m-n))
+    smax = int(min(j+m, j-n))
+    print(smin,smax)
+
+    
+    #prefactor
+    p = np.sqrt( float(factorial(int(j+n)))) * np.sqrt(float(factorial(int(j-n)))) * np.sqrt(float(factorial(int(j+m)))) * np.sqrt(float(factorial(int(j-m)) ))
+    
+    # sum
+    d = 0
+    for s in range(smin, smax+1):
+        pre = factorial(int(j+m-s))*factorial(int(s))*factorial(int(n-m+s))*factorial(int(j-n-s))
+        d += (-1)**(n-m+s) * np.cos(theta/2)**(2*j+m-n-2*s)*np.sin(theta/2)**(n-m+2*s) / pre
+    
+    d = d * p
+    return d
+    
+
+
 class Progress:
     def __init__(self, total, description='', start_step=0):
         self.description = description
