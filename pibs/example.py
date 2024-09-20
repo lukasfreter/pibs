@@ -23,15 +23,16 @@ from time import time
 import pickle
 import multiprocessing
 import scipy.sparse as sp
+from util import wigner_d
 
 
-# plt.rcParams.update({'font.size': 18,
-#                      'xtick.labelsize' : 18,
-#                      'ytick.labelsize' : 18,
-#                      'lines.linewidth' : 2,
-#                      'lines.markersize': 10,
-#                      'figure.figsize': (10,6),
-#                      'figure.dpi': 150})
+plt.rcParams.update({'font.size': 12,
+                      'xtick.labelsize' : 12,
+                      'ytick.labelsize' : 12,
+                      'lines.linewidth' : 1.5,
+                      'lines.markersize': 5,
+                      'figure.figsize': (10,6),
+                      'figure.dpi': 150})
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
@@ -39,7 +40,7 @@ ntls =20#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 1.0
 wc = 0.65
-Omega = 0.1N#0.4
+Omega = 0.4
 g = Omega / np.sqrt(ntls)
 kappa = 1e-02
 gamma = 1e-03
@@ -47,20 +48,35 @@ gamma_phi = 0.0075
 gamma_phi_qutip = 4*gamma_phi
 
 dt = 0.2 # timestep
-tmax = 200-2*dt # for optimum usage of chunks in parallel evolution
+tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
-atol=1e-10
-rtol=1e-10
+atol=1e-12
+rtol=1e-12
 nsteps=1000
 
 
 indi = Indices(ntls, debug=True, save = False)
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = 0#np.pi/2
+theta = np.pi/2
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
+
+
+# wigner d test
+# from math import factorial
+# fig, ax = plt.subplots()
+# for m in range(-int(ntls/2), int(ntls/2)+1):
+#     # print(m)
+#     ax.scatter(m, wigner_d(theta, ntls/2, m , ntls/2), color='b')
+#     d = np.sqrt(float(factorial(ntls))) / (np.sqrt(float(factorial(int(ntls/2+m)))) * np.sqrt(float(factorial(int(ntls/2-m))))) * np.cos(theta/2)**(ntls/2+m)*np.sin(theta/2)**(ntls/2-m)
+#     ax.scatter(m, d+0.01, color='r')
+    
+# ax.set_xlabel('m')
+# ax.set_ylabel(r'$d_{m, N/2}^{N/2}(\pi/2)$')
+# plt.show()
+# sys.exit()
 
 rho_phot = basis(nphot,0) # second argument: number of photons in initial state
 rho_spin = sp.csr_matrix(rot_x @ basis(2,0) @ rot_x_dag) # First argument: spin dimension 2. Second argument: 0=up, 1=down
@@ -79,28 +95,82 @@ p = tensor(qeye(nphot), sigmap()*sigmam())
 ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-
-# evolve.time_evolve_block_interp(ops, progress = True)
-evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
+evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=True)
+# evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
+expect_per_nu_phot = np.squeeze(evolve.result.expect_per_nu[:,0,:])
 t = evolve.result.t
 
 runtime = time() - t0
 
-fig, ax = plt.subplots(2)
-ax[0].plot(t, e_phot_tot)
+fig, ax = plt.subplots()
+ax.plot(t, e_phot_tot)
+ax.set_xlabel(r'$t$')
+ax.set_ylabel(r'$\langle n\rangle$')
 # ax[1].plot(t, e_excit_site)
-ax[1].plot(t[:-1], np.diff(e_excit_site))
+# ax[1].plot(t[:-1], np.diff(e_excit_site))
 
-fig.suptitle(r'$N={N}$, chunksize={chunksize}'.format(N=ntls, chunksize=chunksize))
-ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \gamma_\phi^{{qutip}}={gamma_phi_qutip}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,gamma_phi_qutip=gamma_phi_qutip))
+fig.suptitle(r'$N={N}$'.format(N=ntls))
+ax.set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
 
+common_params = {
+    'method': 'pibs',
+    'N': ntls,
+    'nphot': nphot,
+    'w0': w0,
+    'wc': wc,
+    'Delta': wc- w0,
+    'gamma': gamma,
+    'gamma_phi': gamma_phi, # value that we actually feed into code
+    'gamma_phi_qutip': gamma_phi*4, # gammaphi that is consistent with qutip 
+    'kappa': kappa,
+    'Omega': Omega,
+    'tmax': tmax,
+    'dt': dt,
+    'theta': theta,
+    'chunksize':chunksize,
+    'nsteps': nsteps,
+    'atol':atol,
+    'rtol':rtol,
+    
+    }
 
 # ax.legend()
 plt.show()
-# sys.exit()
+
+import itertools
+color = itertools.cycle(('-', '--',':'))
+fname = 'results/pibs_parallel_mp_N100_Delta-0.35_Omega0.4_kappa0.01_gamma0.001_gammaphi0.0075_tmax100.0_atol1e-18_rtol1e-15_solverbdf_nsteps10000_scale1000000_perNuTrue.pkl'
+with open(fname, 'rb') as handle:
+    data= pickle.load(handle)
+t = data['results']['t']
+expect_per_nu_phot = data['results']['e_phot_tot_nu']
+common_params = data['params']
+
+
+fig, ax = plt.subplots(1,2)
+count = 0
+for nu in range(common_params['N'],-1,-1):
+    if max(expect_per_nu_phot[nu,:]) < 1e-2 and False:
+        continue
+    count+=1
+    ls = next(color)
+    ax[0].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
+    ax[1].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
+ax[0].set_xlabel(r'$t$')
+ax[0].set_ylabel(r'$\langle n\rangle$')
+ax[1].set_xlabel(r'$t$')
+ax[1].set_ylabel(r'$\langle n\rangle$')
+ax[1].set_yscale('log')
+ax[0].legend(ncol=2)
+fig.suptitle(r'$N={N},\ \Delta={Delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(**common_params))
+plt.tight_layout()
+plt.show()
+print(count)
+
+sys.exit()
     
 
 
@@ -138,7 +208,7 @@ data = {
         'runtime': runtime}
 
 fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
-#fname = f'results/{params["method"]}.pkl'
+fname = f'results/example.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
     pickle.dump(data,handle)
