@@ -87,6 +87,7 @@ class Results:
         self.rho= []
         self.t = []
         self.expect = []
+        self.expect_per_nu = []
         
 class TimeEvolve():
     """ Class to handle time evolution of the quantum system. There are two
@@ -307,7 +308,7 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf'):
+    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf', expect_per_nu=False):
         """ 
         GOTO METHOD FOR PARALLEL TIME EVOLUTION
         
@@ -369,6 +370,8 @@ class TimeEvolve():
         
         # initialize expectation values and time
         self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
+        if expect_per_nu:
+            self.result.expect_per_nu = np.zeros((num_blocks, len(expect_oper),ntimes), dtype=complex)  # idx: (nu, operator, time)
         self.result.t = np.zeros(ntimes)
         self.result.t = np.arange(t0, self.tend+self.dt,self.dt)
         
@@ -503,8 +506,15 @@ class TimeEvolve():
                     if t_idx >= ntimes:
                         continue
                     read_index = write[nu] * chunksize
-                    self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  (
-                        np.array(self.expect_comp_block([rhos_chunk[nu][:,read_index+ i]],nu, expect_oper)).flatten())
+                    
+                    expect_nu = np.array(self.expect_comp_block([rhos_chunk[nu][:,read_index+ i]],nu, expect_oper)).flatten()
+                    self.result.expect[:,t_idx] +=  expect_nu 
+                    
+                    if expect_per_nu:
+                        self.result.expect_per_nu[nu, :, t_idx] = expect_nu
+                    
+                    # self.result.expect[:,t_idx] = self.result.expect[:,t_idx] +  (
+                    #     np.array(self.expect_comp_block([rhos_chunk[nu][:,read_index+ i]],nu, expect_oper)).flatten())
                     i = i+1
                 # update write variable
                 write[nu] = (write[nu] + 1) % saved_chunks # if 1 make it 0, if 0 make it 1
@@ -585,11 +595,15 @@ class TimeEvolve():
         
      
         
-    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf'):
+    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False):
         """ Time evolution of the block structure without resetting the solver at each step.
         Do so by interpolating feedforward.
         
         method: 'bdf' = stiff, 'adams' = non-stiff
+        save_states : True: save states at all times, False: only save initial and final state
+        expect_oper : List of operators for which expectation values are calculated
+        expect_per_nu : If true, calculate the expectation values for each block separately
+        
         
         """
         
@@ -624,6 +638,9 @@ class TimeEvolve():
             
         if expect_oper is not None:
             self.result.expect = np.zeros((len(expect_oper), ntimes), dtype=complex)
+            
+            if expect_per_nu:
+                self.result.expect_per_nu = np.zeros((num_blocks, len(expect_oper),ntimes), dtype=complex)  # idx: (nu, operator, time)
         
         #Record initial values
         self.result.t[0] = t0            
@@ -666,7 +683,13 @@ class TimeEvolve():
                 
             for t_idx in range(ntimes):
                 #self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([rhos[nu][:,t_idx]],nu, expect_oper)).flatten()
-                self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu_max, expect_oper)).flatten()
+                expect_nu = np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu_max, expect_oper)).flatten()
+                self.result.expect[:,t_idx] +=  expect_nu #np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu_max, expect_oper)).flatten()
+                
+                if expect_per_nu:
+                    self.result.expect_per_nu[nu_max, :, t_idx] = expect_nu
+
+                
                 if progress:
                     bar.update()
         if save_states:
@@ -712,7 +735,12 @@ class TimeEvolve():
             if expect_oper is not None:
                 for t_idx in range(ntimes):
                     #self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([rhos[nu][:,t_idx]],nu, expect_oper)).flatten()
-                    self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu, expect_oper)).flatten()
+                    expect_nu = np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu, expect_oper)).flatten()
+                    self.result.expect[:,t_idx] +=  expect_nu
+                    
+                    if expect_per_nu:
+                        self.result.expect_per_nu[nu, :, t_idx] = expect_nu
+                    
                     if progress:
                         bar.update()
             if save_states:
