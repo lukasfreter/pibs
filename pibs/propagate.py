@@ -595,7 +595,7 @@ class TimeEvolve():
         
      
         
-    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False):
+    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False, start_block=None):
         """ Time evolution of the block structure without resetting the solver at each step.
         Do so by interpolating feedforward.
         
@@ -603,9 +603,11 @@ class TimeEvolve():
         save_states : True: save states at all times, False: only save initial and final state
         expect_oper : List of operators for which expectation values are calculated
         expect_per_nu : If true, calculate the expectation values for each block separately
+        start_block : specify excitation number corresponding to block, at which the time evolution should start.
+                      If None, start_block is set to nu_max, which gives exact result.
         
         
-        """
+        """      
         
         print('Starting time evolution serial block (interpolation)...')
         tstart = time()
@@ -617,9 +619,29 @@ class TimeEvolve():
         t0 = 0
         ntimes = round(self.tend/self.dt)+1
         
+        # determine start block
+        if start_block == None or start_block == nu_max:
+            start_block = nu_max
+        else:
+            if self.indices.only_numax:
+                print('Warning: Cannot simultaneously set only_numax evolution and starting time evolution at block not equal to nu_max.')
+                print('Please change "only_numax" parameter in Indices, or change "start_block" in time evolution.')
+                
+                # maybe just make a decision for the user? 50-50 chance that it is correct
+                return
+            
+            if start_block > nu_max or start_block < 0:
+                raise ValueError(f"Start block exciation must be within 0 and {nu_max}.")
+            if not isinstance(start_block, (int, np.integer)):
+                raise ValueError('Start block excitation must be an integer.')
+            print(f'Start block set to {start_block}/{nu_max}.')
+            
+        
         if progress:
             if self.indices.only_numax:
                 bar = Progress(2*ntimes, description='Time evolution under L (only numax)...', start_step=1)
+            elif start_block < nu_max:
+                bar = Progress(2*(ntimes-1)*(start_block+1), description=f'Time evolution under L (start block: {start_block})...', start_step=1)
             else:
                 bar = Progress(2*(ntimes-1)*num_blocks, description='Time evolution under L...', start_step=1)
         if save_states is None:
@@ -646,26 +668,29 @@ class TimeEvolve():
         self.result.t[0] = t0            
         
         # first calculate block nu_max. Setup integrator
+        # If start_block is set by user, start with start_block
         r = ode(_intfunc).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol, nsteps=self.nsteps)
         
         if self.indices.only_numax:
             r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[0])
         else:
-            r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[nu_max])
+            # r.set_initial_value(self.rho.initial[nu_max],t0).set_f_params(self.L.L0[nu_max])
+            r.set_initial_value(self.rho.initial[start_block],t0).set_f_params(self.L.L0[start_block])
+
         
         # temporary variable to store states
         #rhos = [ np.zeros((len(self.indices.mapping_block[i]), ntimes), dtype=complex) for i in range(num_blocks)]
         #rhos[nu][:,0] = self.rho.initial[nu]
 
-        rho_nu = np.zeros((blocksizes[nu_max], ntimes), dtype = complex)
-        rho_nu[:,0] = self.rho.initial[nu_max] 
+        rho_nu = np.zeros((blocksizes[start_block], ntimes), dtype = complex)
+        rho_nu[:,0] = self.rho.initial[start_block] 
         
         # using the exact solver times for the feedforward interpolation instead of using linearly spaced time array makes a (small) difference
         solver_times = np.zeros(ntimes)
         solver_times[0] = t0
     
         n_t=1
-        while r.successful() and n_t<ntimes:
+        while r.successful() and n_t < ntimes:
             rho = r.integrate(r.t+self.dt)
             self.result.t[n_t] = r.t
             solver_times[n_t] = r.t
@@ -683,20 +708,20 @@ class TimeEvolve():
                 
             for t_idx in range(ntimes):
                 #self.result.expect[:,t_idx] +=  np.array(self.expect_comp_block([rhos[nu][:,t_idx]],nu, expect_oper)).flatten()
-                expect_nu = np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu_max, expect_oper)).flatten()
+                expect_nu = np.array(self.expect_comp_block([rho_nu[:,t_idx]],start_block, expect_oper)).flatten()
                 self.result.expect[:,t_idx] +=  expect_nu #np.array(self.expect_comp_block([rho_nu[:,t_idx]],nu_max, expect_oper)).flatten()
                 
                 if expect_per_nu:
-                    self.result.expect_per_nu[nu_max, :, t_idx] = expect_nu
+                    self.result.expect_per_nu[start_block, :, t_idx] = expect_nu
 
                 
                 if progress:
                     bar.update()
         if save_states:
-            self.result.rho[nu_max] = rho_nu
+            self.result.rho[start_block] = rho_nu
         else: # store initial and final states
-            self.result.rho[nu_max][:,0] = rho_nu[:,0]
-            self.result.rho[nu_max][:,1] = rho_nu[:,-1] 
+            self.result.rho[start_block][:,0] = rho_nu[:,0]
+            self.result.rho[start_block][:,1] = rho_nu[:,-1] 
             
         #self.result.t = np.arange(t0, self.tend+self.dt,self.dt)
         if self.indices.only_numax:
@@ -705,7 +730,7 @@ class TimeEvolve():
             return
         
         # Now, do the feed forward for all other blocks. Need different integration function, _intfunc_block_interp
-        for nu in range(num_blocks-2, -1,-1):           
+        for nu in range(start_block - 1, -1,-1):           
             #rho_interp = interp1d(self.result.t, rhos[nu+1], bounds_error=False, fill_value="extrapolate") # extrapolate results from previous block
             rho_interp = interp1d(solver_times, rho_nu, bounds_error=False, fill_value="extrapolate") # interpolate results from previous block, rho_nu                  
                        
