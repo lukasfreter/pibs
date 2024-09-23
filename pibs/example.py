@@ -67,11 +67,15 @@ rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2),
 # wigner d test
 # from math import factorial
 # fig, ax = plt.subplots()
-# for m in range(-int(ntls/2), int(ntls/2)+1):
+# M = np.arange(-ntls/2, ntls/2, 1)
+# for m in M:
 #     # print(m)
-#     ax.scatter(m, wigner_d(theta, ntls/2, m , ntls/2), color='b')
-#     d = np.sqrt(float(factorial(ntls))) / (np.sqrt(float(factorial(int(ntls/2+m)))) * np.sqrt(float(factorial(int(ntls/2-m))))) * np.cos(theta/2)**(ntls/2+m)*np.sin(theta/2)**(ntls/2-m)
-#     ax.scatter(m, d+0.01, color='r')
+#     # ax.scatter(m, wigner_d(theta, ntls/2, m , ntls/2), color='b')
+#     # d = np.sqrt(float(factorial(ntls))) / (np.sqrt(float(factorial(int(ntls/2+m)))) * np.sqrt(float(factorial(int(ntls/2-m))))) * np.cos(theta/2)**(ntls/2+m)*np.sin(theta/2)**(ntls/2-m)
+#     N = ntls/2
+#     stirling = np.sqrt( 1/np.sqrt(np.pi) * N**(2*N+1/2) * (N**2 - m**2)**(-N-1/2) * ((N-m) / (N+m))**m)
+#     # ax.scatter(m, d, color='r')
+#     ax.scatter(m, stirling, color='b')
     
 # ax.set_xlabel('m')
 # ax.set_ylabel(r'$d_{m, N/2}^{N/2}(\pi/2)$')
@@ -95,7 +99,7 @@ p = tensor(qeye(nphot), sigmap()*sigmam())
 ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=True)
+evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=True, start_block=15)
 # evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
@@ -114,63 +118,66 @@ ax.set_ylabel(r'$\langle n\rangle$')
 
 fig.suptitle(r'$N={N}$'.format(N=ntls))
 ax.set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
-
-common_params = {
-    'method': 'pibs',
-    'N': ntls,
-    'nphot': nphot,
-    'w0': w0,
-    'wc': wc,
-    'Delta': wc- w0,
-    'gamma': gamma,
-    'gamma_phi': gamma_phi, # value that we actually feed into code
-    'gamma_phi_qutip': gamma_phi*4, # gammaphi that is consistent with qutip 
-    'kappa': kappa,
-    'Omega': Omega,
-    'tmax': tmax,
-    'dt': dt,
-    'theta': theta,
-    'chunksize':chunksize,
-    'nsteps': nsteps,
-    'atol':atol,
-    'rtol':rtol,
-    
-    }
-
 # ax.legend()
 plt.show()
-
-import itertools
-color = itertools.cycle(('-', '--',':'))
-fname = 'results/pibs_parallel_mp_N100_Delta-0.35_Omega0.4_kappa0.01_gamma0.001_gammaphi0.0075_tmax100.0_atol1e-18_rtol1e-15_solverbdf_nsteps10000_scale1000000_perNuTrue.pkl'
-with open(fname, 'rb') as handle:
-    data= pickle.load(handle)
-t = data['results']['t']
-expect_per_nu_phot = data['results']['e_phot_tot_nu']
-common_params = data['params']
+# sys.exit()
 
 
-fig, ax = plt.subplots(1,2)
-count = 0
-for nu in range(common_params['N'],-1,-1):
-    if max(expect_per_nu_phot[nu,:]) < 1e-2 and False:
-        continue
-    count+=1
-    ls = next(color)
-    ax[0].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
-    ax[1].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
-ax[0].set_xlabel(r'$t$')
-ax[0].set_ylabel(r'$\langle n\rangle$')
-ax[1].set_xlabel(r'$t$')
-ax[1].set_ylabel(r'$\langle n\rangle$')
-ax[1].set_yscale('log')
-ax[0].legend(ncol=2)
-fig.suptitle(r'$N={N},\ \Delta={Delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(**common_params))
-plt.tight_layout()
-plt.show()
-print(count)
 
-sys.exit()
+
+# common_params = {
+#     'method': 'pibs',
+#     'N': ntls,
+#     'nphot': nphot,
+#     'w0': w0,
+#     'wc': wc,
+#     'Delta': wc- w0,
+#     'gamma': gamma,
+#     'gamma_phi': gamma_phi, # value that we actually feed into code
+#     'gamma_phi_qutip': gamma_phi*4, # gammaphi that is consistent with qutip 
+#     'kappa': kappa,
+#     'Omega': Omega,
+#     'tmax': tmax,
+#     'dt': dt,
+#     'theta': theta,
+#     'chunksize':chunksize,
+#     'nsteps': nsteps,
+#     'atol':atol,
+#     'rtol':rtol,
+    
+#     }
+
+# import itertools
+# color = itertools.cycle(('-', '--',':'))
+# fname = 'results/pibs_parallel_mp_N100_Delta-0.35_Omega0.4_kappa0.01_gamma0.001_gammaphi0.0075_tmax100.0_atol1e-18_rtol1e-15_solverbdf_nsteps10000_scale1000000_perNuTrue.pkl'
+# with open(fname, 'rb') as handle:
+#     data= pickle.load(handle)
+# t = data['results']['t']
+# expect_per_nu_phot = data['results']['e_phot_tot_nu']
+# common_params = data['params']
+
+
+# fig, ax = plt.subplots(1,2)
+# count = 0
+# for nu in range(common_params['N'],-1,-1):
+#     if max(expect_per_nu_phot[nu,:]) < 1e-2 and False:
+#         continue
+#     count+=1
+#     ls = next(color)
+#     ax[0].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
+#     ax[1].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
+# ax[0].set_xlabel(r'$t$')
+# ax[0].set_ylabel(r'$\langle n\rangle$')
+# ax[1].set_xlabel(r'$t$')
+# ax[1].set_ylabel(r'$\langle n\rangle$')
+# ax[1].set_yscale('log')
+# ax[0].legend(ncol=2)
+# fig.suptitle(r'$N={N},\ \Delta={Delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(**common_params))
+# plt.tight_layout()
+# plt.show()
+# print(count)
+
+# sys.exit()
     
 
 
@@ -207,7 +214,7 @@ data = {
         'results': res,
         'runtime': runtime}
 
-fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
+# fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
 fname = f'results/example.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:

@@ -308,7 +308,7 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf', expect_per_nu=False):
+    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf', expect_per_nu=False, start_block=None):
         """ 
         GOTO METHOD FOR PARALLEL TIME EVOLUTION
         
@@ -336,6 +336,26 @@ class TimeEvolve():
         nu_max = num_blocks-1
         t0 = 0
         ntimes = round(self.tend/self.dt)+1
+        
+        # determine start block
+        if start_block == None or start_block == nu_max:
+            start_block = nu_max
+        else:
+            if self.indices.only_numax:
+                print('Warning: Cannot simultaneously set only_numax evolution and starting time evolution at block not equal to nu_max.')
+                print('Please change "only_numax" parameter in Indices, or change "start_block" in time evolution.')
+                
+                # maybe just make a decision for the user? 50-50 chance that it is correct
+                return
+            
+            if start_block > nu_max or start_block < 0:
+                raise ValueError(f"Start block exciation must be within 0 and {nu_max}.")
+            if not isinstance(start_block, (int, np.integer)):
+                raise ValueError('Start block excitation must be an integer.')
+            print(f'Start block set to {start_block}/{nu_max}.')
+        
+        
+        
         num_evolutions = int(np.ceil(ntimes/chunksize))+nu_max # number of loops for progress bar
         # some weird edge case, if chunksize divides ntimes
         if ntimes % chunksize == 0:  
