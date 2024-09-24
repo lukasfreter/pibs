@@ -36,11 +36,11 @@ plt.rcParams.update({'font.size': 12,
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls =50#int(sys.argv[1])#number 2LS
+ntls =20#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 1.0
 wc = 0.65
-Omega = 0.4
+Omega = 0.1
 g = Omega / np.sqrt(ntls)
 kappa = 1e-02
 gamma = 1e-03
@@ -56,35 +56,35 @@ rtol=1e-12
 nsteps=1000
 
 
-# indi = Indices(ntls, debug=True, save = False)
+indi = Indices(ntls, debug=True, save = False)
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = np.pi/4
+theta = 0#np.pi/4
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
 
 # wigner d test
-from math import factorial
-fig, ax = plt.subplots()
-M = np.arange(-ntls/2, ntls/2, 1)
-for m in M:
-    # print(m)
-    if m >= 21:
-        color = 'r'
-    else:
-        color = 'b'
-    ax.scatter(m, wigner_d(theta, ntls/2, m , ntls/2), color=color)
-    # d = np.sqrt(float(factorial(ntls))) / (np.sqrt(float(factorial(int(ntls/2+m)))) * np.sqrt(float(factorial(int(ntls/2-m))))) * np.cos(theta/2)**(ntls/2+m)*np.sin(theta/2)**(ntls/2-m)
-    # N = ntls/2
-    # stirling = np.sqrt( 1/np.sqrt(np.pi) * N**(2*N+1/2) * (N**2 - m**2)**(-N-1/2) * ((N-m) / (N+m))**m)
-    # ax.scatter(m, d, color='r')
-    # ax.scatter(m, stirling, color='b')
+# from math import factorial
+# fig, ax = plt.subplots()
+# M = np.arange(-ntls/2, ntls/2, 1)
+# for m in M:
+#     # print(m)
+#     if m >= 21:
+#         color = 'r'
+#     else:
+#         color = 'b'
+#     ax.scatter(m, wigner_d(theta, ntls/2, m , ntls/2), color=color)
+#     # d = np.sqrt(float(factorial(ntls))) / (np.sqrt(float(factorial(int(ntls/2+m)))) * np.sqrt(float(factorial(int(ntls/2-m))))) * np.cos(theta/2)**(ntls/2+m)*np.sin(theta/2)**(ntls/2-m)
+#     # N = ntls/2
+#     # stirling = np.sqrt( 1/np.sqrt(np.pi) * N**(2*N+1/2) * (N**2 - m**2)**(-N-1/2) * ((N-m) / (N+m))**m)
+#     # ax.scatter(m, d, color='r')
+#     # ax.scatter(m, stirling, color='b')
     
-ax.set_xlabel('m')
-ax.set_ylabel(r'$d_{m, N/2}^{N/2}(\pi/4)$')
-plt.show()
-sys.exit()
+# ax.set_xlabel('m')
+# ax.set_ylabel(r'$d_{m, N/2}^{N/2}(\pi/4)$')
+# plt.show()
+# sys.exit()
 
 rho_phot = basis(nphot,0) # second argument: number of photons in initial state
 rho_spin = sp.csr_matrix(rot_x @ basis(2,0) @ rot_x_dag) # First argument: spin dimension 2. Second argument: 0=up, 1=down
@@ -103,7 +103,7 @@ p = tensor(qeye(nphot), sigmap()*sigmam())
 ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=True, start_block=15)
+evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=True, start_block=None)
 # evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
