@@ -36,19 +36,19 @@ plt.rcParams.update({'font.size': 12,
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls =20#int(sys.argv[1])#number 2LS
+ntls =3#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 1.0
 wc = 0.65
 Omega = 0.1
 g = Omega / np.sqrt(ntls)
-kappa = 1e-02
-gamma = 1e-03
-gamma_phi = 0.0075
+kappa = 0#1e-02
+gamma = 0#1e-03
+gamma_phi = 0#0.0075
 gamma_phi_qutip = 4*gamma_phi
 
 dt = 0.2 # timestep
-tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
+tmax = 200-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-12
@@ -113,18 +113,18 @@ t = evolve.result.t
 
 runtime = time() - t0
 
-fig, ax = plt.subplots()
-ax.plot(t, e_phot_tot)
-ax.set_xlabel(r'$t$')
-ax.set_ylabel(r'$\langle n\rangle$')
-# ax[1].plot(t, e_excit_site)
-# ax[1].plot(t[:-1], np.diff(e_excit_site))
-
+fig, ax = plt.subplots(2,1)
+ax[0].plot(t, e_phot_tot/ntls)
+ax[0].set_xlabel(r'$t$')
+ax[0].set_ylabel(r'$\langle n\rangle$')
+ax[1].plot(t, e_excit_site)
+ax[1].set_xlabel(r'$t$')
+ax[1].set_ylabel(r'$\langle \sigma_i^+\sigma_i^-\rangle$')
 fig.suptitle(r'$N={N}$'.format(N=ntls))
-ax.set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
+ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
 # ax.legend()
 plt.show()
-# sys.exit()
+sys.exit()
 
 
 
