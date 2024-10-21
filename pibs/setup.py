@@ -55,10 +55,10 @@ class Indices:
             nspins : number of spins
             nphot : photon space dimension (here always set to nspins+1)
             spin_dim : dimension of single spin (here always set to 2)
+            verbose : If false, do not print anything to command line
             debug: Do not load existing file, always calculate new set of indices
             save : If true, save spin indices for later use
             index_path : path, where index file is stored
-            suppress_output : if true, do not print output to command line
             only_numax : If true, calculate indices only for block with maximum excitation numbers. 
                         This is interesting when solving a system with no losses, then we stay in the block 
                         determined by initial conditions (which for sf initial conditions is nu_max)
@@ -74,8 +74,12 @@ class Indices:
             
         if nphot is None:
             nphot = nspins + 1
+            if verbose:
+                print('Photon dimension set to ', nphot)
         if spin_dim is None:
             spin_dim = 2 # spin 1/2 system
+            if verbose:
+                print('Spin dimension set to ', spin_dim)
             
         self.nspins, self.ldim_p, self.ldim_s = nspins, nphot, spin_dim
         self.indices_elements = []
@@ -87,6 +91,8 @@ class Indices:
         
         self.only_numax = only_numax
         
+        self.verbose = verbose
+        
         # loading/saving paths
         if index_path is None:
             index_path = 'data/indices/'
@@ -95,7 +101,6 @@ class Indices:
         
         
         if debug is False:
-            
             if only_numax: # check data/indices/numax
                 if os.path.isdir(index_path+'numax/'):
                     index_files = os.listdir(index_path + 'numax/')
@@ -113,16 +118,16 @@ class Indices:
             
         # debug true -> always calculate spin indices anew, or if not save file is found
         # setup indices
-        if not suppress_output:
+        if verbose:
             print(f'Setting up spin indices with nspins={self.nspins},spin_dim={self.ldim_s}...', flush=True)
         t0 = time()
         self.list_equivalent_elements()
         elapsed = time()-t0
-        if not suppress_output:
+        if verbose:
             print(f'Complete {elapsed:.0f}s', flush=True)
 
         # setup mapping block
-        if not suppress_output:
+        if verbose:
             if only_numax:
                 print(f'Running setup indices block (only nu_max) with nspins={self.nspins},nphot={self.ldim_p}...', flush=True)
             else:
@@ -130,7 +135,7 @@ class Indices:
         t0 = time()
         self.setup_mapping_block()
         elapsed = time()-t0
-        if not suppress_output:
+        if verbose:
             print(f'Complete {elapsed:.0f}s', flush=True)
         
         if save:
@@ -305,17 +310,20 @@ class Indices:
 
 
     def export(self, filepath):
-        print(f'Storing Indices for later use in {filepath} ...')
+        if self.verbose:
+            print(f'Storing Indices for later use in {filepath} ...')
         t0 = time()
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
         elapsed = time() - t0
-        print(f'Storing complete {elapsed:.1f}s')
+        if self.verbose:
+            print(f'Storing complete {elapsed:.1f}s')
             
 
 
     def load(self, filepath):
-        print(f'Loading indices file {filepath} ...')
+        if self.verbose:
+            print(f'Loading indices file {filepath} ...')
         t0 = time()
         with open(filepath, 'rb') as handle:
             indices_load = pickle.load(handle)
@@ -325,10 +333,12 @@ class Indices:
         # at least tell user what they loaded
         if not hasattr(self, 'only_numax'):
             self.only_numax = False # if the indices file loaded is an old one that does not have the attribute 'only_numax' yet, then set it to false.
-        if self.only_numax:
-            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} (only nu_max) {elapsed:.1f}s')
-        else:
-            print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} {elapsed:.1f}s')
+
+        if self.verbose:            
+            if self.only_numax:
+                print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} (only nu_max) {elapsed:.1f}s')
+            else:
+                print(f'Loaded index file with ntls={self.nspins}, nphot={self.ldim_p}, spin_dim={self.ldim_s} {elapsed:.1f}s')
         
         
         
