@@ -191,7 +191,7 @@ class Indices:
         and the photon numbers then get just matched such that left and right excitations equal nu_max.
 
         """     
-        num_elements = len(self.indices_elements)
+        num_elements = len(self.indices_elements) # number of distinct spin states
         nu_max = self.nspins # maximum excitation number IF initial state is all spins up and zero photons
         
         self.mapping_block = [ [] for _ in range(nu_max+1)] # list of nu_max+1 empty lists
@@ -234,7 +234,7 @@ class Indices:
             for nu in range(max(count_tuple), nu_max+1):
                 self.coupled_photon_block[nu][count_tuple] = [[],[]]
 
-        for count in range(num_elements):
+        for count in range(num_elements): # loop through spin states
             element = self.indices_elements[count]  # spin-element in compressed form
             left = element[0:self.nspins]   # left spin indices
             right = element[self.nspins:2*self.nspins] # right spin indices
@@ -244,12 +244,20 @@ class Indices:
             num_diff = sum(left != right)
             nu_min = max(m_left, m_right) # can't have fewer than m_left+0 photons (or m_right+0photons) excitations
             
+            # nu_max_loop can at most be nu_max (because no element has more excitations than nu_max)
+            # but in the case where nphot != ntls+1, it could be that nu_max_loop < nu_max, because
+            # the photon space is restricted. Then, nu_max_loop = maximum excitation possible with left or right spin index plus photon excitations.
+            nu_max_loop = min(max(m_left, m_right) + self.ldim_p-1, nu_max)
+            
             if self.only_numax == True:
                 nu_min = nu_max
             
-            for nu in range(nu_min, nu_max+1):
+            for nu in range(nu_min, nu_max_loop+1):
                 count_p1 = nu - m_left
                 count_p2 = nu - m_right
+                if count_p1 >= self.ldim_p or count_p2 >= self.ldim_p: # disregard states, where photon number in left or right index exceeds photon space dimension
+                    continue
+                
                 element_index = self.ldim_p*num_elements*count_p1 + num_elements*count_p2 + count
                 el = np.concatenate(([count_p1], left, [count_p2], right))
                 self.mapping_block[nu].append(element_index)
@@ -270,7 +278,7 @@ class Indices:
             nu_min = nu_max
         else:
             nu_min = 0
-        for nu in range(nu_min,nu_max+1):
+        for nu in range(nu_min,nu_max+1): # need to go through all nu here
             # zip-sort-zip - a personal favourite Python One-Liner
             self.mapping_block[nu], self.elements_block[nu], \
             difference_block[nu] =\
@@ -2295,11 +2303,7 @@ class Rho:
         return rho_vec
                         
                         
-            
-        
-  
-        
-    
+
     def setup_convert_rho_block_nrs(self, nrs):
         """Setup conversion matrix from supercompressed vector to vector form of
         reduced density matrix of the photon plus nrs (possibly 0) spins
