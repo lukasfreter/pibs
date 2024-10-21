@@ -36,8 +36,8 @@ plt.rcParams.update({'font.size': 12,
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls =3#int(sys.argv[1])#number 2LS
-nphot = ntls+1
+ntls =1#int(sys.argv[1])#number 2LS
+nphot = 1#ntls+1
 w0 = 1.0
 wc = 0.65
 Omega = 0.1
@@ -57,6 +57,10 @@ nsteps=1000
 
 
 indi = Indices(ntls, debug=True, save = False)
+indi.print_elements()
+
+sys.exit()
+
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
 theta = 0#np.pi/4
