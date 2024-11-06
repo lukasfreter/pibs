@@ -128,7 +128,7 @@ fig.suptitle(r'$N={N}$'.format(N=ntls))
 ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
 # ax.legend()
 plt.show()
-sys.exit()
+# sys.exit()
 
 
 
@@ -212,6 +212,7 @@ params = {
     'rtol':rtol,
     
     }
+# e_phot_tot = np.sin(1*2*np.pi*t) + np.exp(-1j*2*np.pi*2*t)
 res = {
     't':t,
     'e_phot_tot': e_phot_tot,
@@ -224,6 +225,7 @@ data = {
 
 # fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
 fname = f'results/example.pkl'
+# fname = 'results/test_sin.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
     pickle.dump(data,handle)
