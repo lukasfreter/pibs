@@ -177,6 +177,22 @@ def basis(N, n=0):
     bas = bas.tocsr()
 
     return tensor(bas, bas.T)
+
+def thermal_dm(N, nth):
+    """ Create thermal density matreix for N-level Hilbert space with average
+    photon number nth"""
+    if (not isinstance(N, (int, np.integer))) or N < 0:
+        raise ValueError("N must be integer N >= 0")
+
+    dm = np.zeros((N,N))
+    x= nth /(1+nth)
+    Z = (1 - x**N) / (1 - x)  # partition function
+    for i in range(N):
+       dm[i,i] = 1.0 / Z * x**i
+        
+    return sp.csr_matrix(dm)
+        
+        
     
 def expect(oper, state):
 
