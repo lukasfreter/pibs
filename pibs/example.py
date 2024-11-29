@@ -40,9 +40,9 @@ ntls = 5#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 1.0
 wc = 1.0
-Omega = 0.0
+Omega = 0.4
 g = Omega / np.sqrt(ntls)
-kappa = 0.05#1e-02
+kappa = 1e-02
 gamma = 0#1e-03
 gamma_phi = 0#0.075
 gamma_phi_qutip = 4*gamma_phi
@@ -63,7 +63,7 @@ indi = Indices(ntls,nphot, debug=True, save = False)
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = np.pi
+theta = 0#np.pi
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -90,7 +90,7 @@ rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2),
 # plt.show()
 # sys.exit()
 
-rho_phot = basis(nphot,2) # second argument: number of photons in initial state
+rho_phot = basis(nphot,0) # second argument: number of photons in initial state
 # rho_phot = thermal_dm(nphot, nth=1/2)
 rho_spin = sp.csr_matrix(rot_x @ basis(2,0) @ rot_x_dag) # First argument: spin dimension 2. Second argument: 0=up, 1=down
 
@@ -128,33 +128,33 @@ g2 = G2 / e_phot_tot**2
 
 
 # two time correlations: g1
-rho_phot_g1 = rho_phot @ create(nphot)
-rho = Rho(rho_phot_g1, rho_spin, indi)
-ops = [a]
-evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
-G1 = evolve.result.expect[0]
-g1 = G1 / np.sqrt(e_phot_tot[0] * e_phot_tot)
+# rho_phot_g1 = rho_phot @ create(nphot)
+# rho = Rho(rho_phot_g1, rho_spin, indi)
+# ops = [a]
+# evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
+# evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
+# G1 = evolve.result.expect[0]
+# g1 = G1 / np.sqrt(e_phot_tot[0] * e_phot_tot)
 
 
-# two time correlations: g2
-rho_phot_g2 = destroy(nphot) @ rho_phot @ create(nphot)
-rho = Rho(rho_phot_g2, rho_spin, indi)
-ops = [n]
-evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
-G2 = evolve.result.expect[0]
-g2 = G2 / (e_phot_tot[0] * e_phot_tot)
+# # two time correlations: g2
+# rho_phot_g2 = destroy(nphot) @ rho_phot @ create(nphot)
+# rho = Rho(rho_phot_g2, rho_spin, indi)
+# ops = [n]
+# evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
+# evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
+# G2 = evolve.result.expect[0]
+# g2 = G2 / (e_phot_tot[0] * e_phot_tot)
 
 
 runtime = time() - t0
 
 fig, ax = plt.subplots(2,1)
-# ax[0].plot(t, e_phot_tot, label='n')
+ax[0].plot(t, e_phot_tot, label='n')
 # ax[0].plot(t, e_phot_n2/ntls**2, label='n^2')
-ax[0].plot(t, g1,label='g1')
+# ax[0].plot(t, g1,label='g1')
 
-ax[0].plot(t, g2,label='g2')
+# ax[0].plot(t, g2,label='g2')
 # ax[0].plot(t, g2_c2, label='g2 c2')
 # ax[0].plot(t, G2/e_phot_tot**2)
 # ax[0].plot(t, e_phot_tot, ls='--')
