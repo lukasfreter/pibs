@@ -38,21 +38,21 @@ t0 = time()
 # same parameters as in Peter Kirton's code.
 ntls = 5#int(sys.argv[1])#number 2LS
 nphot = ntls+1
-w0 = 1.0
-wc = 1.0
-Omega = 0.4
+w0 = 0.35
+wc = 0.0
+Omega = 0.05
 g = Omega / np.sqrt(ntls)
 kappa = 1e-02
-gamma = 0#1e-03
-gamma_phi = 0#0.075
+gamma = 1e-03
+gamma_phi = 0.0075
 gamma_phi_qutip = 4*gamma_phi
 
 dt = 0.2 # timestep
 tmax = 200-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
-atol=1e-12
-rtol=1e-12
+atol=1e-8
+rtol=1e-8
 nsteps=1000
 
 
@@ -63,7 +63,7 @@ indi = Indices(ntls,nphot, debug=True, save = False)
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = 0#np.pi
+theta = np.pi/8
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -123,7 +123,7 @@ e_phot_n2 = evolve.result.expect[2].real
 t = evolve.result.t
 
 # g2 function: g2(t, 0)
-G2 = e_phot_n2 - e_phot_tot
+G2 = e_phot_n2 - e_phot_tot # < adag adag a a> = <n²> - <n>
 g2 = G2 / e_phot_tot**2
 
 
@@ -150,7 +150,7 @@ g2 = G2 / e_phot_tot**2
 runtime = time() - t0
 
 fig, ax = plt.subplots(2,1)
-ax[0].plot(t, e_phot_tot, label='n')
+ax[0].plot(t, e_phot_tot/ntls, label='n')
 # ax[0].plot(t, e_phot_n2/ntls**2, label='n^2')
 # ax[0].plot(t, g1,label='g1')
 
@@ -281,3 +281,5 @@ fname = f'results/example.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
     pickle.dump(data,handle)
+    
+print('Stored in ', fname)
