@@ -26,13 +26,13 @@ import scipy.sparse as sp
 from util import wigner_d
 
 
-plt.rcParams.update({'font.size': 12,
-                      'xtick.labelsize' : 12,
-                      'ytick.labelsize' : 12,
-                      'lines.linewidth' : 1.5,
-                      'lines.markersize': 5,
-                      'figure.figsize': (10,6),
-                      'figure.dpi': 150})
+# plt.rcParams.update({'font.size': 12,
+#                       'xtick.labelsize' : 12,
+#                       'ytick.labelsize' : 12,
+#                       'lines.linewidth' : 1.5,
+#                       'lines.markersize': 5,
+#                       'figure.figsize': (10,6),
+#                       'figure.dpi': 150})
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
@@ -40,7 +40,7 @@ ntls = 5#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0.35
 wc = 0.0
-Omega = 0.05
+Omega = 0.4
 g = Omega / np.sqrt(ntls)
 kappa = 1e-02
 gamma = 1e-03
