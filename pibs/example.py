@@ -36,7 +36,7 @@ from util import wigner_d
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 5#int(sys.argv[1])#number 2LS
+ntls = 10#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0.35
 wc = 0.0
@@ -63,7 +63,7 @@ indi = Indices(ntls,nphot, debug=True, save = False)
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = np.pi/8
+theta = np.pi/4
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
