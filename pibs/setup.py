@@ -193,6 +193,7 @@ class Indices:
         """     
         num_elements = len(self.indices_elements) # number of distinct spin states
         nu_max = self.nspins # maximum excitation number IF initial state is all spins up and zero photons
+                             # TODO: depending on the initial state of spins and photons, adapt nu_max properly 
         
         self.mapping_block = [ [] for _ in range(nu_max+1)] # list of nu_max+1 empty lists
         self.elements_block = [ [] for _ in range(nu_max+1)]
