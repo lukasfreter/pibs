@@ -36,19 +36,19 @@ from util import wigner_d
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 1#int(sys.argv[1])#number 2LS
+ntls = 10#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0.0#0.35
 wc = 0.0
-Omega = 0.4
+Omega = 0#0.4
 g = Omega / np.sqrt(ntls)
-kappa = 5e-02
-gamma = 0#1e-03
+kappa = 0#5e-02
+gamma = 0.1#1e-03
 gamma_phi =0# 0.0075
 gamma_phi_qutip = 4*gamma_phi
 
 dt = 0.4 # timestep
-tmax = 400-2*dt # for optimum usage of chunks in parallel evolution
+tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-8
@@ -90,7 +90,7 @@ rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2),
 # plt.show()
 # sys.exit()
 
-rho_phot = basis(nphot,10) # second argument: number of photons in initial state
+rho_phot = basis(nphot,0) # second argument: number of photons in initial state
 # rho_phot = thermal_dm(nphot, nth=1/2)
 rho_spin = sp.csr_matrix(rot_x @ basis(2,0) @ rot_x_dag) # First argument: spin dimension 2. Second argument: 0=up, 1=down
 
@@ -170,7 +170,7 @@ fig.suptitle(r'$N={N}$'.format(N=ntls))
 ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
 ax[0].legend()
 plt.show()
-sys.exit()
+# sys.exit()
 
 
 
@@ -275,8 +275,8 @@ data = {
         'results': res,
         'runtime': runtime}
 
-# fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
-fname = f'results/example.pkl'
+fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
+# fname = f'results/example.pkl'
 # fname = 'results/test_sin.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
