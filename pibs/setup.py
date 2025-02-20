@@ -441,7 +441,7 @@ class BlockL:
         parallel=0
         parallel=1
     """
-    def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True, progress=False, liouv_path=None):
+    def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True, progress=False, liouv_path=None,verbose=True):
         
         if indices.only_numax:
             if parallel > 1:
@@ -460,6 +460,7 @@ class BlockL:
                          #'sigmam_collective':[],
                          'a': []}
         self.num_cpus = num_cpus
+        self.verbose = verbose
         
         
         if liouv_path is None:
@@ -491,16 +492,18 @@ class BlockL:
                  3: self.setup_L_block_basis_ray,
                  4: self.setup_L_block_basis_ray2}
         try:
-            if indices.only_numax:
-                print(f'Calculating normalised Liouvillian (only nu_max) {pname[parallel]}...')
-            else:
-                print(f'Calculating normalised Liouvillian {pname[parallel]}...')
+            if verbose:
+                if indices.only_numax:
+                    print(f'Calculating normalised Liouvillian (only nu_max) {pname[parallel]}...')
+                else:
+                    print(f'Calculating normalised Liouvillian {pname[parallel]}...')
             pfunc[parallel](indices, progress)
         except KeyError as e:
             print('Argument parallel={parallel} not recognised')
             raise e
         elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
         if save:
             # export normalized Liouvillians for later use, if save is true
@@ -512,19 +515,22 @@ class BlockL:
         
     
     def export(self, filepath):
-        print(f'Storing Liouvillian basis for later use in {filepath} ...', flush=True)
+        if self.verbose:
+            print(f'Storing Liouvillian basis for later use in {filepath} ...', flush=True)
         t0 = time()
         with open(filepath, 'wb') as handle:
             pickle.dump(self, handle)
         elapsed = time() - t0
-        print(f'Storing complete {elapsed:.1f}', flush=True)
+        if self.verbose:
+            print(f'Storing complete {elapsed:.1f}', flush=True)
             
     def _load(self, filepath,ind):
         t0 = time()
-        if ind.only_numax:
-            print(f'Loading Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath} ...', flush=True)
-        else:
-            print(f'Loading Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath} ...', flush = True)
+        if self.verbose:
+            if ind.only_numax:
+                print(f'Loading Liouvillian basis (only nu_max) file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath} ...', flush=True)
+            else:
+                print(f'Loading Liouvillian basis file with ntls={ind.nspins}, nphot={ind.ldim_p}, spin_dim={ind.ldim_s} from file {filepath} ...', flush = True)
 
         
         with open(filepath, 'rb') as handle:
@@ -546,7 +552,8 @@ class BlockL:
         
         elapsed = time() - t0
         # at least tell user what they loaded
-        print(f'Loading complete {elapsed:.1f}', flush=True)
+        if self.verbose:
+            print(f'Loading complete {elapsed:.1f}', flush=True)
 
     
     @staticmethod    
@@ -1857,7 +1864,7 @@ class Models(BlockL):
     where the light-matter coupling g is assumed real.
     
     """
-    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True, num_cpus=None, liouv_path=None):
+    def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True, num_cpus=None, liouv_path=None, verbose=True):
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         
@@ -1880,17 +1887,21 @@ class Models(BlockL):
         self.indices = indices
         self.L0 = []
         self.L1 = []
-        super().__init__(indices=indices, parallel=parallel,num_cpus=num_cpus, debug=debug, save=save, progress=progress,liouv_path=liouv_path)
+        self.verbose = verbose
+        super().__init__(indices=indices, parallel=parallel,num_cpus=num_cpus, debug=debug, save=save, progress=progress,liouv_path=liouv_path, verbose=verbose)
     
     def setup_L_Tavis_Cummings(self, progress=False, save_path=None):
         t0 = time()
         if self.indices.only_numax:
-            print('Calculating Liouvillian for TC model from basis (only nu_max) ...', flush =True)
+            if self.verbose:
+                print('Calculating Liouvillian for TC model from basis (only nu_max) ...', flush =True)
             if progress:
                 progress = False
-                print('Disabled progress bar (only one step)')
+                if self.verbose:
+                    print('Disabled progress bar (only one step)')
         else:
-            print('Calculating Liouvillian for TC model from basis ...', flush =True)
+            if self.verbose:
+                print('Calculating Liouvillian for TC model from basis ...', flush =True)
         
         names0 = ['H_sigmaz', 'H_n', 'H_g','a', 'sigmam', 'sigmaz']
         names1 = ['sigmam' , 'a']
@@ -1939,11 +1950,13 @@ class Models(BlockL):
                     bar.update()
  
         elapsed = time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if self.verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         if save_path is not None:
             with open(save_path, 'wb') as handle:
                 pickle.dump(self, handle)
-            print(f'Wrote full model to {save_path}.')
+            if self.verbose:
+                print(f'Wrote full model to {save_path}.')
             
             
     def setup_L_superradiance(self,gamma_collective, progress=False, save_path=None):
@@ -2087,7 +2100,11 @@ class Rho:
         Calculation of expectation values
     """
         
-    def __init__(self, rho_p, rho_s, indices, max_nrs=1, scale_rho=1):
+    def __init__(self, rho_p, rho_s, indices, max_nrs=1, scale_rho=1.0, verbose=True):
+        """ rho_p and rho_s are the density matrices of the photon and the single spin space respectively.
+        max_nrs determines the number of spins in the reduced density matrix
+        scale_rho is a scaling factor of the whole density matrix
+        """
         assert type(max_nrs) == int, "Argument 'max_nrs' must be int"
         assert max_nrs >= 0, "Argument 'max_nrs' must be non-negative"
         assert indices.nspins >= max_nrs, "Number of spins in reduced density matrix "\
@@ -2106,18 +2123,22 @@ class Rho:
         
         # setup initial state
         t0 = time()
-        print('Set up initial density matrix...')
+        if verbose:
+            print('Set up initial density matrix...')
         self.initial=self.setup_initial_efficient(rho_p, rho_s)
         elapsed= time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
         if self.scale_rho != 1:
             t0 = time()
-            print(f'Scaling initial density matrix by {self.scale_rho} ...')
+            if verbose:
+                print(f'Scaling initial density matrix by {self.scale_rho} ...')
             for nu in range(len(self.initial)):
                 self.initial[nu] = self.initial[nu] * self.scale_rho
         elapsed= time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
         # for debugging: calculate initial state from Peter Kirton's code
         # t0 = time()
@@ -2130,12 +2151,15 @@ class Rho:
         
         # setup reduced density matrix
         t0 = time()
-        print('Set up mappings to reduced density matrices at...')
+        if verbose:
+            print('Set up mappings to reduced density matrices at...')
         for nrs in range(max_nrs+1):
-            print(f'nrs = {nrs}...')
+            if verbose:
+                print(f'nrs = {nrs}...')
             self.setup_convert_rho_block_nrs(nrs)
         elapsed= time()-t0
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
     
     
