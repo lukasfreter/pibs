@@ -36,18 +36,18 @@ from util import wigner_d
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 10#int(sys.argv[1])#number 2LS
+ntls = 20#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0.0#0.35
 wc = 0.0
-Omega = 0#0.4
+Omega = 0.4
 g = Omega / np.sqrt(ntls)
 kappa = 0#5e-02
 gamma = 0.1#1e-03
 gamma_phi =0# 0.0075
 gamma_phi_qutip = 4*gamma_phi
 
-dt = 0.4 # timestep
+dt = 0.2 # timestep
 tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
@@ -100,7 +100,7 @@ scale = 1e3
 rho = Rho(rho_phot, rho_spin, indi) # initial condition with zero photons and all spins up.# sys.exit()
 
 
-L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=1,progress=True, debug=True,save=False, num_cpus=None)
+L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=1,progress=True, debug=False,save=False, num_cpus=None)
 L.setup_L_Tavis_Cummings(progress=True)
 
 
@@ -110,7 +110,7 @@ a = tensor(destroy(nphot), qeye(2))
 n = adag*a
 n2 = adag*a*adag*a
 p = tensor(qeye(nphot), sigmap()*sigmam())
-ops = [n,p, n2] # operators to calculate expectations for
+ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
 evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
@@ -118,13 +118,13 @@ evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
-e_phot_n2 = evolve.result.expect[2].real
+# e_phot_n2 = evolve.result.expect[2].real
 #expect_per_nu_phot = np.squeeze(evolve.result.expect_per_nu[:,0,:])
 t = evolve.result.t
 
 # g2 function: g2(t, 0)
-G2 = e_phot_n2 - e_phot_tot # < adag adag a a> = <n²> - <n>
-g2 = G2 / e_phot_tot**2
+# G2 = e_phot_n2 - e_phot_tot # < adag adag a a> = <n²> - <n>
+# g2 = G2 / e_phot_tot**2
 
 
 # two time correlations: g1
@@ -170,7 +170,7 @@ fig.suptitle(r'$N={N}$'.format(N=ntls))
 ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
 ax[0].legend()
 plt.show()
-# sys.exit()
+sys.exit()
 
 
 
