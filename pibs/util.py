@@ -77,15 +77,16 @@ def permute_compatible(comp1, comp2, permute):
     return cp_permute
 
 def degeneracy_spin_gamma(spin1, spin2):
-    """Return number of indices where spin1 and spin2 are up"""
+    """Return number of indices where spin1 and spin2 are up. For L0 part of
+    individual loss L[sigmam]"""
     return np.count_nonzero(spin1+spin2==0)
 
 def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
     """Find simultaneous permutation of inner1 and inner2, such that all but one
     spin index align, and in exactly the same positions. This is necessary
-    for calculating the Lindblad operator of sigma minus. Inefficient way """
+    for calculating the Lindblad operator of sigma minus (individual decay). efficient way """
     from itertools import permutations
-    from numpy import array, concatenate, where, not_equal
+    from numpy import where
     Oc = outer1 + 2*outer2
     Ic = inner1 + 2*inner2
     
@@ -96,6 +97,174 @@ def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
         return outer_num3
     else:
         return 0
+    
+    
+# def degeneracy_gamma_collective_same_block_right_equal(left, right, left_to_couple):
+#     """ Find degeneracy for collective decay, L0 part, first term where
+#         right = right_to_couple: sigmap_i sigmam_j * rho term"""
+#     xi1 = left[1:] + 2*right[1:]
+#     xi2 = left_to_couple[1:] + 2*right[1:]
+    
+#     # print('states',left[1:], right[1:], left_to_couple[1:], right[1:])
+    
+#     # print(xi1, xi2)
+#     print('diff right', xi1-xi2)
+    
+#     # a valid 
+    
+# def degeneracy_gamma_collective_same_block_left_equal(left, right, right_to_couple):
+#     """ Find degeneracy for collective decay, L0 part, first term where
+#         left = left_to_couple: rho * sigmap_i sigmam_j term """
+#     xi1 = left[1:] + 2*right[1:]
+#     xi2 = left[1:] + 2*right_to_couple[1:]
+    
+#     print('states', left[1:], right[1:], left[1:], right_to_couple[1:])
+    
+#     print(xi1, xi2)
+#     print('diff left', xi1-xi2)
+    
+    
+def degeneracy_gamma_collective_same_block(state1, state2):
+    """ Find the number of unique simultaneous permutations, that leave state 2 invariant but change state 1. (spin states, no photons)
+    
+    Recipe: 
+        Calculate Oc = state1 + 2*state2
+        Observe: If state2 must remain the same under a permutation but state1 must change, then that
+        can only mean that we swap 3 <-> 2 and 1<->0 in this Oc array!
+        Therefore: count the number of 0,1,2,3
+        The degeneracy is then : (num(3)+num(2))! (num(3)!*num(2)!) * (num(0)+num(1))!/(num(0)!*num(1)!)
+        
+        NOT QUITE: WE ALSO NEED TO CHECK IF ALL THESE PERMUTATIONS HAVE NONZERO MATRIX ELEMENTS
+    """
+    Oc = state1 + 2*state2
+    nums = np.zeros(4, dtype=int) # array for number of 0,1,2,3s in Oc
+    for i in range(len(nums)):
+        nums[i] = len(np.where(Oc==i)[0])
+    
+    deg =  factorial(nums[3]+nums[2]) / (factorial(nums[3])*factorial(nums[2]))
+    deg *= factorial(nums[1]+nums[0]) / (factorial(nums[1])*factorial(nums[0]))
+    
+    return int(deg)
+
+
+def degeneracy_gamma_collective_same_block_rho_right_pedestrian(left, left_to_couple_permute, right):
+    """ Calculate the degeneracy for the term  -1/2 * sigmap_i + sigmam_j * rho .
+    Quite inefficient, just proof of concept:
+        go through all permutations fo left_to_couple_permute, right that leave right invariant and change left_to_couple_permute
+        Then determine if this permutation has non-zero matrix element by checking if exactly one 1 and one 2 appear in right + 2*left_to_couple_permute
+    
+    """
+    from sympy.utilities.iterables import multiset_permutations
+
+    # Find all distinct permutations of left_to_couple_permute and right, that leave right invariant and change left_to_couple_permute
+    # by calculating left_to_couple_permute + 2*right. Then, It is allowed to swap 3 and 2, and 1 and 0.
+    Oc = left_to_couple_permute + 2*right
+    
+    arr01 = []
+    arr23 = []
+
+
+    idx_map_01 = []
+    idx_map_23 = []
+    for i in range(len(Oc)):
+        if Oc[i] == 1 or Oc[i] == 0:
+            arr01.append(Oc[i])
+            idx_map_01.append(i)
+        else:
+            arr23.append(Oc[i])
+            idx_map_23.append(i)
+
+    
+    # get new indices in the shortened arrays
+    deg = 0
+    # now we can go through the unique permutations of arr01 and arr23
+    for p01 in multiset_permutations(arr01):
+        for p23 in multiset_permutations(arr23):
+            # build the left and right spin states for sigmap_i *sigmam_j
+            Oc_perm = np.zeros(len(Oc))
+            for i in range(len(p01)):
+                Oc_perm[idx_map_01[i]] = p01[i]
+            for j in range(len(p23)):
+                Oc_perm[idx_map_23[j]] = p23[j]
+            
+            # calculate new left_to_couple
+            ltc_new = Oc_perm - 2*right
+            
+            # with this new left_to_couple, calculate left+2*left_to_couple and check if it contains exactly one 1 and one 2
+            x = left + 2*ltc_new
+            if len(np.where(x==1)[0]) == 1 and len(np.where(x==2)[0]) == 1:
+                deg += 1
+    
+    return deg
+    
+    
+    
+    
+    
+    
+    
+def degeneracy_gamma_collective_changing_block(outer1, outer2, inner1, inner2):
+    """Find simultaneous permutation of inner1 and inner2, such that:
+        - all but two spind indices are aligned
+        - the two that do not align must be such that from Oc -> Ic there is a transition:
+                - 3->1 and 1->0
+                - 3->2 and 2->0
+                - 3->1 and 3->2
+                - 1->0 and 2->0
+                (for details see PIBS notes under collective decay, L1 part) INEFFICIENT WAY
+     """
+    from numpy import where, array
+    from sympy.utilities.iterables import multiset_permutations
+    Oc = outer1 + 2*outer2
+    Ic = inner1 + 2*inner2
+    # sort and check, if there are two different places, where the indices do not agree. Remember: we need 2 indices which do not agree because i!=j (see PIBS notes)
+    Oc.sort()
+    Ic.sort()
+    Oc = Oc[::-1] # not really necessary, I just like the ordering from big to small
+    Ic = Ic[::-1]
+
+    
+    deg = 0
+    for p in multiset_permutations(Ic): # loop through all unique permutations
+        if sum(array(p) != Oc) <= 2:
+            deg+=1
+    # print('new')
+    # print(Oc)
+    # print(Ic)
+    # print(deg)
+    return deg
+    
+    
+    
+def degeneracy_gamma_collective_changing_block_efficient(outer1, outer2, inner1, inner2):
+    """Find simultaneous permutation of inner1 and inner2, such that:
+        - all but two spind indices are aligned
+        - the two that do not align must be such that from Oc -> Ic there is a transition:
+                - 3->1 and 1->0
+                - 3->2 and 2->0
+                - 3->1 and 3->2
+                - 1->0 and 2->0
+                (for details see PIBS notes under collective decay)
+    
+    TO DO
+     """
+    from numpy import where
+    Oc = outer1 + 2*outer2
+    Ic = inner1 + 2*inner2
+    # sort and check, if there are two different places, where the indices do not agree. Remember: we need 2 indices which do not agree because i!=j (see PIBS notes)
+    Oc.sort()
+    Ic.sort()
+    Oc = Oc[::-1] # not really necessary, I just like the ordering from big to small
+    Ic = Ic[::-1]
+
+    print('new')
+    print(Oc)
+    print(Ic)
+    if sum(Ic != Oc) != 2: # Ic != Oc is a boolean array with True if Ic[i] != Oc[i]. sum() gives the number of True. In our case, it must be 2 in order to contribute
+        print(0)
+        return 0 
+    print(1)
+
 
 # operators here?
 
