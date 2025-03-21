@@ -24,6 +24,8 @@ import pickle
 import multiprocessing
 import scipy.sparse as sp
 from util import wigner_d
+sys.path.insert(1, '../../../codes/thisandthat/')
+from sr_numerical_solution import solve_sr
 
 
 # plt.rcParams.update({'font.size': 12,
@@ -36,7 +38,7 @@ from util import wigner_d
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 2#int(sys.argv[1])#number 2LS
+ntls = 7#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0#0.35
 wc = 0#1.0
@@ -46,9 +48,10 @@ kappa = 0.01#5e-02
 gamma = 0.01#0.1#1e-03
 gamma_phi =0.1/4# 0.0075
 gamma_phi_qutip = 4*gamma_phi
+gamma_collective = 1
 
-dt = 0.1 # timestep
-tmax = 50-2*dt # for optimum usage of chunks in parallel evolution
+dt = 0.01 # timestep
+tmax = 10-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-8
@@ -63,7 +66,7 @@ indi.print_elements()
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = 0#np.pi/4
+theta = 0
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -101,7 +104,38 @@ rho = Rho(rho_phot, rho_spin, indi) # initial condition with zero photons and al
 
 
 L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=True,save=False, num_cpus=None)
-L.setup_L_superradiance(0.2)
+# L.L0_basis['sigmam_collective'][1][0,0]=-2
+# L.L0_basis['sigmam_collective'][1][1,0]=-2
+# L.L0_basis['sigmam_collective'][1][0,1]=-1
+# L.L0_basis['sigmam_collective'][1][1,1]=-1
+# L.L0_basis['sigmam_collective'][2][0,0]=-6
+# L.L0_basis['sigmam_collective'][2][1,0]=-3
+# L.L0_basis['sigmam_collective'][2][0,1]=2
+# L.L0_basis['sigmam_collective'][2][1,1]=-1
+
+# L.L0_basis['sigmam_collective'][2][0,2]=0
+# L.L0_basis['sigmam_collective'][2][2,0]=0
+
+
+# L.L1_basis['sigmam_collective'][1][0,0] = 7/3
+# L.L1_basis['sigmam_collective'][1][0,1] = 5/3
+# L.L1_basis['sigmam_collective'][1][1,0] = 10/3
+# L.L1_basis['sigmam_collective'][1][1,1] = 2/3
+
+L.setup_L_superradiance(gamma_collective)
+
+# for i in range(len(L.L1)):
+#     for j in range(L.L1[i].shape[0]):
+#         for k in range(L.L1[i].shape[1]):
+#             L.L1[i][j,k]=0.0
+            
+# for i in range(len(L.L0)):
+#     for j in range(L.L0[i].shape[0]):
+#         for k in range(L.L0[i].shape[1]):
+#             L.L0[i][j,k]=0.0
+
+# sys.exit()
+
 # sys.exit()
 # L.setup_L_Tavis_Cummings(progress=True)
 
@@ -115,7 +149,7 @@ p = tensor(qeye(nphot), sigmap()*sigmam())
 ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
+evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=True)
 # evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
@@ -149,38 +183,35 @@ t = evolve.result.t
 # g2 = G2 / (e_phot_tot[0] * e_phot_tot)
 
 
+# my solution
+rho, t_me, Jz_me = solve_sr(ntls, gamma_collective,mode='', num=500, tmax=tmax)
+e_excit_site_me = (2*Jz_me + ntls)/2 / ntls
 runtime = time() - t0
 
-# fig, ax = plt.subplots(2,1)
-# ax[0].plot(t, e_phot_tot/ntls, label='n')
-# # ax[0].plot(t, e_phot_n2/ntls**2, label='n^2')
-# # ax[0].plot(t, g1,label='g1')
+fig, ax = plt.subplots(2,1)
+ax[0].plot(t, e_phot_tot/ntls, label='n')
+# ax[0].plot(t, e_phot_n2/ntls**2, label='n^2')
+# ax[0].plot(t, g1,label='g1')
 
-# # ax[0].plot(t, g2,label='g2')
-# # ax[0].plot(t, g2_c2, label='g2 c2')
-# # ax[0].plot(t, G2/e_phot_tot**2)
-# # ax[0].plot(t, e_phot_tot, ls='--')
-# # ax[0].plot(t, g2_tau)
-# # ax[0].plot(t, e_phot_tot/ntls)
+# ax[0].plot(t, g2,label='g2')
+# ax[0].plot(t, g2_c2, label='g2 c2')
+# ax[0].plot(t, G2/e_phot_tot**2)
+# ax[0].plot(t, e_phot_tot, ls='--')
+# ax[0].plot(t, g2_tau)
+# ax[0].plot(t, e_phot_tot/ntls)
 
-# ax[0].set_xlabel(r'$t$')
-# ax[0].set_ylabel(r'$\langle n\rangle$')
-# # ax[1].plot(t[1:], -np.diff(e_excit_site))
-# ax[1].plot(t, e_excit_site)
-# ax[1].set_xlabel(r'$t$')
-# ax[1].set_ylabel(r'$\langle \sigma_i^+\sigma_i^-\rangle$')
-# fig.suptitle(r'$N={N}$'.format(N=ntls))
-# ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
-# ax[0].legend()
-# plt.show()
+ax[0].set_xlabel(r'$t$')
+ax[0].set_ylabel(r'$\langle n\rangle$')
+# ax[1].plot(t[1:], -np.diff(e_excit_site))
+ax[1].plot(t, e_excit_site)
+ax[1].plot(t_me, e_excit_site_me, ls='--')
+ax[1].set_xlabel(r'$t$')
+ax[1].set_ylabel(r'$\langle \sigma_i^+\sigma_i^-\rangle$')
+fig.suptitle(r'$N={N}$'.format(N=ntls))
+ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
+ax[0].legend()
+plt.show()
 # sys.exit()
-
-
-
-
-
-
-
 
 
 

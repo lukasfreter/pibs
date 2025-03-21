@@ -98,67 +98,45 @@ def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
     else:
         return 0
     
-    
-# def degeneracy_gamma_collective_same_block_right_equal(left, right, left_to_couple):
-#     """ Find degeneracy for collective decay, L0 part, first term where
-#         right = right_to_couple: sigmap_i sigmam_j * rho term"""
-#     xi1 = left[1:] + 2*right[1:]
-#     xi2 = left_to_couple[1:] + 2*right[1:]
-    
-#     # print('states',left[1:], right[1:], left_to_couple[1:], right[1:])
-    
-#     # print(xi1, xi2)
-#     print('diff right', xi1-xi2)
-    
-#     # a valid 
-    
-# def degeneracy_gamma_collective_same_block_left_equal(left, right, right_to_couple):
-#     """ Find degeneracy for collective decay, L0 part, first term where
-#         left = left_to_couple: rho * sigmap_i sigmam_j term """
-#     xi1 = left[1:] + 2*right[1:]
-#     xi2 = left[1:] + 2*right_to_couple[1:]
-    
-#     print('states', left[1:], right[1:], left[1:], right_to_couple[1:])
-    
-#     print(xi1, xi2)
-#     print('diff left', xi1-xi2)
-    
-    
-def degeneracy_gamma_collective_same_block(state1, state2):
-    """ Find the number of unique simultaneous permutations, that leave state 2 invariant but change state 1. (spin states, no photons)
-    
-    Recipe: 
-        Calculate Oc = state1 + 2*state2
-        Observe: If state2 must remain the same under a permutation but state1 must change, then that
-        can only mean that we swap 3 <-> 2 and 1<->0 in this Oc array!
-        Therefore: count the number of 0,1,2,3
-        The degeneracy is then : (num(3)+num(2))! (num(3)!*num(2)!) * (num(0)+num(1))!/(num(0)!*num(1)!)
         
-        NOT QUITE: WE ALSO NEED TO CHECK IF ALL THESE PERMUTATIONS HAVE NONZERO MATRIX ELEMENTS
-    """
-    Oc = state1 + 2*state2
-    nums = np.zeros(4, dtype=int) # array for number of 0,1,2,3s in Oc
-    for i in range(len(nums)):
-        nums[i] = len(np.where(Oc==i)[0])
-    
-    deg =  factorial(nums[3]+nums[2]) / (factorial(nums[3])*factorial(nums[2]))
-    deg *= factorial(nums[1]+nums[0]) / (factorial(nums[1])*factorial(nums[0]))
-    
-    return int(deg)
 
-
-def degeneracy_gamma_collective_same_block_rho_right_pedestrian(left, left_to_couple_permute, right):
-    """ Calculate the degeneracy for the term  -1/2 * sigmap_i + sigmam_j * rho .
-    Quite inefficient, just proof of concept:
-        go through all permutations fo left_to_couple_permute, right that leave right invariant and change left_to_couple_permute
-        Then determine if this permutation has non-zero matrix element by checking if exactly one 1 and one 2 appear in right + 2*left_to_couple_permute
+def degeneracy_gamma_collective_same_block_pedestrian(outer, change_permute, invariant_permute):
+    """ Calculate the degeneracy for the term  -1/2 * sigmap_i * sigmam_j * rho or -1/2* rho * sigmap_i *sigmam_j
+        Quite inefficient, just proof of concept. Need to work on more efficient way later.
+        
+        For the term -1/2 * sigmap_i * sigmam_j * rho : 
+            invariant_permute = right
+            change_permute = left_to_couple_permute
+            outer = left
+            
+            
+        For the term -1/2 * rho * sigmap_i *sigmam_j:
+            invariant_permute = left
+            change_permute = right_to_couple_permute
+            outer = right
+        
+        In the following, the concept is explained using the -1/2 * sigmap_i * sigmam_j * rho term:
+        
+        Go through all combined permutations of the spin states 'left_to_couple_permute' and 'right', that leave 'right' invariant and change 'left_to_couple_permute'.
+        
+        Recipe for getting valid permutations:
+            Calculate Oc = change_permute + 2*invariant_permute
+            Observe: If invariant_permute must remain the same under a permutation but change_permute must change, then that
+            can only mean that we swap 3 <-> 2 and 1<->0 in this Oc array!
+        
+        Then determine for each permutation
+            -does this permutation have non-zero matrix element by checking if exactly one 1 and one 2 appear in 'right' + 2*'left_to_couple_permute' (i!=j)
+                In that case, there is a up-down transition and a down-up transition at different places (i.e. at i and j, respectively)
+            -does this permutation have non-zero matrix element by checking if only 3 and 0 appear in right + 2*left_to_couple_permute (i=j)
+                In that case, the spin state in 'right' is the same as the spin state in 'left_to_couple_permute'. This means there is only a contribution for i=j,
+                because the spin states must not change. This is then the degeneracy we already calculate for individual decay and is just the number of 'up' spins
     
     """
     from sympy.utilities.iterables import multiset_permutations
 
-    # Find all distinct permutations of left_to_couple_permute and right, that leave right invariant and change left_to_couple_permute
-    # by calculating left_to_couple_permute + 2*right. Then, It is allowed to swap 3 and 2, and 1 and 0.
-    Oc = left_to_couple_permute + 2*right
+    # Find all distinct permutations of change_permute and invariant_permute, that leave invariant_permute invariant and change change_permute
+    # by calculating change_permute + 2*invariant_permute. Then, It is allowed to swap 3 and 2, and 1 and 0.
+    Oc = change_permute + 2*invariant_permute
     
     arr01 = []
     arr23 = []
@@ -188,12 +166,16 @@ def degeneracy_gamma_collective_same_block_rho_right_pedestrian(left, left_to_co
                 Oc_perm[idx_map_23[j]] = p23[j]
             
             # calculate new left_to_couple
-            ltc_new = Oc_perm - 2*right
+            ltc_new = Oc_perm - 2*invariant_permute
             
-            # with this new left_to_couple, calculate left+2*left_to_couple and check if it contains exactly one 1 and one 2
-            x = left + 2*ltc_new
-            if len(np.where(x==1)[0]) == 1 and len(np.where(x==2)[0]) == 1:
+            # with this new left_to_couple, calculate left+2*left_to_couple 
+            x = outer + 2*ltc_new
+            pos_1 = np.where(x==1)[0] # indices where x array is 1
+            pos_2 = np.where(x==2)[0] # indices where x array is 2
+            if len(pos_1) == 1 and len(pos_2) == 1:# check if it contains exactly one 1 and one 2 -> case i != j
                 deg += 1
+            elif len(pos_1) == 0 and len(pos_2) == 0: # check, if there are only 0 and 3 in the array -> case i=j
+                deg += np.count_nonzero(outer==0) # degeneracy = number of spin up; spin up is represented by 0; so count number of zeros.
     
     return deg
     
@@ -205,33 +187,27 @@ def degeneracy_gamma_collective_same_block_rho_right_pedestrian(left, left_to_co
     
 def degeneracy_gamma_collective_changing_block(outer1, outer2, inner1, inner2):
     """Find simultaneous permutation of inner1 and inner2, such that:
-        - all but two spind indices are aligned
+        - all but two spin indices are aligned
         - the two that do not align must be such that from Oc -> Ic there is a transition:
                 - 3->1 and 1->0
                 - 3->2 and 2->0
                 - 3->1 and 3->2
                 - 1->0 and 2->0
-                (for details see PIBS notes under collective decay, L1 part) INEFFICIENT WAY
+                (for details see PIBS notes under collective decay, L1 part) 
+                
+    
+    INEFFICIENT WAY
      """
     from numpy import where, array
     from sympy.utilities.iterables import multiset_permutations
     Oc = outer1 + 2*outer2
     Ic = inner1 + 2*inner2
-    # sort and check, if there are two different places, where the indices do not agree. Remember: we need 2 indices which do not agree because i!=j (see PIBS notes)
-    Oc.sort()
-    Ic.sort()
-    Oc = Oc[::-1] # not really necessary, I just like the ordering from big to small
-    Ic = Ic[::-1]
-
-    
+   
     deg = 0
-    for p in multiset_permutations(Ic): # loop through all unique permutations
-        if sum(array(p) != Oc) <= 2:
+    for p in multiset_permutations(Ic): # loop through all unique permutations of Ic
+        if sum(array(p) != Oc) <= 2:    # if the permuted Ic disagrees with Oc for maximum 2 indices, the permutation contributes (see PIBS notes)
             deg+=1
-    # print('new')
-    # print(Oc)
-    # print(Ic)
-    # print(deg)
+
     return deg
     
     
