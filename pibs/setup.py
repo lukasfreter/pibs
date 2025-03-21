@@ -11,8 +11,7 @@ from multiprocessing import Pool
 from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
 from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient,degeneracy_gamma_collective_changing_block_efficient
 from util import degeneracy_gamma_collective_changing_block
-from util import degeneracy_gamma_collective_same_block
-from util import degeneracy_gamma_collective_same_block_rho_right_pedestrian
+from util import degeneracy_gamma_collective_same_block_pedestrian
 from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
 from util import _multinominal
 from util import Progress
@@ -642,93 +641,9 @@ class BlockL:
                    # get Liouvillian elements
                    #-----------------------------
                    
-                   
-                   #______________________________________________________________________________
-
-                   # COLLECTIVE DECAY OLD
-                   
-                   #collective decay (makes only sense for nspins > 1)
-                   # left_to_couple_spins = left_to_couple[1:]
-                   # right_to_couple_spins = right_to_couple[1:]
-                   # left_spins = left[1:]
-                   # right_spins = right[1:]
-                   
-                   # sigmam_collective = 0
-                   # # check first term: right and right_to_couple must agree. Also left photon numbers must agree (spins dont act on photon space)
-                   # if (right_to_couple == right).all() and left_to_couple[0]==left[0]: 
-                   #     # optimize this double loop by going through all ordered pairs of (k,l) with k<l
-                   #     for k in range(indices.nspins):
-                   #         for l in range(indices.nspins):
-                   #             if l==k: # l==k is handled in individual loss, not collective
-                   #                 continue
-                   #             # we first need to check now, if given the left spins m, if for k,l there is a chance for coupling
-                   #             # condition: m_k = up, m_l = down
-                   #             if left_spins[k] == 0 and left_spins[l] == 1: 
-                   #                 # if the condition is met, we know that the to_couple element must have flipped spins in k and l!
-                   #                 # Construct this 'trial' left array of spins
-                   #                 left_spins_couple_trial = np.copy(left_spins)
-                   #                 left_spins_couple_trial[k] = 1   # j_k is down
-                   #                 left_spins_couple_trial[l] = 0   # j_l is up
-                                  
-                   #                 # Now it can be, that the resulting density matrix element rho_{j, m'} does not appear in our list, because of wrong
-                   #                 # ordering. Therefore, calculate xi's, and see if we need to reorder (reordering is only allowed, if m' is left invariant!)
-                   #                 # xis are ordered from big to small.
-                   #                 xis = 2 * left_spins_couple_trial + right[1:]
-                   #                 sorted_indices = np.flip(np.argsort(xis)) # flip, because argsort sorts from small to big
-                   #                 if not np.all(sorted_indices[:-1] <= sorted_indices[1:]): # check, if sorted_indices is NOT monotonically increasing
-                   #                     # need to perform the sorting permutation on the spins
-                   #                     left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
-                   #                     right_spins_sorted = right[1:][sorted_indices]
-                   #                     # crucial: is right_spins sorted = right?
-                   #                     if not (right_spins_sorted == right[1:]).all():
-                   #                         continue
-                                  
-                   #                 # Now need to check, if the above constructed element matches the to_couple element in question
-                   #                 if (left_to_couple_spins == left_spins_couple_trial).all():
-                   #                     # need degeneracy
-                   #                     deg = degeneracy_outer_invariant_optimized(left_spins, right_spins, left_to_couple_spins)
-                   #                     sigmam_collective += deg * (-1/2)
-                                      
-                   # # similarly the second term, completely analogous
-                   # if (left_to_couple == left).all() and right_to_couple[0]==right[0]: 
-                   #     # optimize this double loop by going through all ordered pairs of (k,l) with k<l
-                   #     for k in range(indices.nspins):
-                   #         for l in range(indices.nspins):
-                   #             if l==k: # l==k is handled in individual loss, not collective
-                   #                 continue
-                   #             # we first need to check now, if given the right spins m', if for k,l there is a chance for coupling
-                   #             # condition: m'_k = up, m'_l = down
-                   #             if right_spins[k] == 0 and right_spins[l] == 1: 
-                   #                 # if the condition is met, we know that the to_couple element must have flipped spins in k and l!
-                   #                 # Construct this 'trial' right array of spins
-                   #                 right_spins_couple_trial = np.copy(right_spins)
-                   #                 right_spins_couple_trial[k] = 1   # j_k is down
-                   #                 right_spins_couple_trial[l] = 0   # j_l is up
-                                  
-                   #                 # Now it can be, that the resulting density matrix element rho_{m, j} does not appear in our list, because of wrong
-                   #                 # ordering. Therefore, calculate xi's, and see if we need to reorder (reordering is only allowed, if m is left invariant!)
-                   #                 # xis are ordered from big to small.
-                   #                 xis = 2 * left[1:] + right_spins_couple_trial
-                   #                 sorted_indices = np.flip(np.argsort(xis)) # flip, because argsort sorts from small to big
-                   #                 if not np.all(sorted_indices[:-1] <= sorted_indices[1:]): # check, if sorted_indices is NOT monotonically increasing
-                   #                     # need to perform the sorting permutation on the spins
-                   #                     right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
-                   #                     left_spins_sorted = left[1:][sorted_indices]
-                   #                     # crucial: is left_spins sorted = left?
-                   #                     if not (left_spins_sorted == left[1:]).all():
-                   #                         continue
-                                  
-                   #                 # Now need to check, if the above constructed element matches the to_couple element in question
-                   #                 if (right_to_couple_spins == right_spins_couple_trial).all():
-                   #                     # need degeneracy
-                   #                     deg = degeneracy_outer_invariant_optimized(left_spins, right_spins, right_to_couple_spins)
-                   #                     sigmam_collective += deg * (-1/2)
-                   
-                   # __________________________________________________________________________
  
                    right_equal = (right_to_couple == right).all()
                    left_equal = (left_to_couple == left).all()      
- 
 
 
                    # Diagonal parts
@@ -747,7 +662,14 @@ class BlockL:
                        deg_right = degeneracy_spin_gamma(right_to_couple[1:indices.nspins+1], right[1:indices.nspins+1]) # degeneracy: because all spin up elements contribute equally
                        deg_left = degeneracy_spin_gamma(left_to_couple[1:indices.nspins+1], left[1:indices.nspins+1])
                        self.new_entry(L0_new, 'sigmam', count_in, count_out,  - 1/2 * (deg_left+deg_right))
-                       # Diagonal part of collective decay, where i=j is the same as for individual decay
+                       
+                       # Diagonal part of collective decay. Note also i!=j can contribute, so we have different degeneracy as for individual decay
+                       deg_right = degeneracy_gamma_collective_same_block_pedestrian(left[1:], left_to_couple[1:],right[1:])
+                       deg_left =  degeneracy_gamma_collective_same_block_pedestrian(right[1:], right_to_couple[1:],left[1:])
+                       # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
+                       if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
+                           deg_left=0
+                           deg_right= 0
                        self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2 * (deg_left+deg_right))      
                        
                        
@@ -760,21 +682,6 @@ class BlockL:
                        self.new_entry(L0_new, 'a', count_in, count_out, -1/2*(left[0] + right[0]))
                    
                        
-                      
-                       
-                   # offdiagonal part of L0 part of collective decay. 
-                   # DO NOT USE RIGHT-EQUAL AND LEFT_EQUAL HERE; YOU MUST USE STATES_COMPATIBLE, BECAUSE PERMUTATIONS ARE OF COURSE ALLOWED
-                   # First, check that photon numbers match
-                   # elif (left[0] == left_to_couple[0]) and right_equal: # -1/2 * sigmap_i *sigmam_j * rho  term (right indices of density matrix must match)
-                   #       # print(left[0], right[0])
-                   #       # print(left[1:], right[1:], left[1:]+2*right[1:])
-                   #       # print(left_to_couple[1:], right_to_couple[1:], left_to_couple[1:]+2*right_to_couple[1:])
-                   #     degeneracy_gamma_collective_same_block_right_equal(left, right, left_to_couple)
-                   #     self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2 )      
-
-                   # elif right[0] == right_to_couple[0] and left_equal: # -1/2 * rho * sigmap_i * sigmam_j term (left indices of density matrix must match)
-                   #     degeneracy_gamma_collective_same_block_left_equal(left, right, right_to_couple)
-                   #     self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2 )      
 
                    
                    # offdiagonal parts; from commutator part of H_g and from Lindbladian terms X*rho or rho*X
@@ -801,10 +708,7 @@ class BlockL:
                                 self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
                                 contributed = True
                         
-                        # SECOND: check for sigmap_i * sigmam_j* rho part of the collective decay process -> need that photon numbers agree (right photon numbers are already checked above with state compatible)
-                        # elif left[0] == left_to_couple_permute[0]:
-                        #     self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2 )      
-                        
+
                         else:
                             counts_continued[nu_element] += 1
 
@@ -831,50 +735,50 @@ class BlockL:
                                 self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
                                 contributed = True
                             
-                        # SECOND: check for rho* sigmap_i * sigmam_j part of the collective decay process -> need that photon numbers agree
-                        # if right[0] == right_to_couple_permute[0]:
-                        #     self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2 )      
-
-                        
                         else:
                             counts_continued[nu_element] += 1
 
             
-                   if nu_element==2 and count_in==3 and count_out==2:
-                       print(1)
+                   # if nu_element==2 and count_in==0 and count_out==2:
+                   #     print(1)
 
-                   # offdiagonal parts of L0 from collective decay. Maybe later I can combine it with the if statement above, not sure at the  moment
-                   # have to exclued diagonal parts where left_equal and right_equal
+                   
+                   # OFFDIAGONAL PARTS OF COLLECTIVE DECAY FOR L0. Maybe later I can combine it with the if statement above, not sure at the  moment
+                   # have to exclued diagonal parts where left_equal and right_equal, they are taken care of above. Maybe can be combined?
                    if(states_compatible(right, right_to_couple)) and left[0] == left_to_couple[0] and not (left_equal and right_equal): 
-                        # if they are compatible, permute left_to_couple appropriately 
+                         # if they are compatible, permute left_to_couple appropriately 
                         left_to_couple_permute = np.copy(left_to_couple)
                         if not right_equal:
-                            # if they are compatible but not equal, we need to permute left_to_couple appropriately, to get correct matrix element
+                             # if they are compatible but not equal, we need to permute left_to_couple appropriately, to get correct matrix element
                             left_to_couple_permute[1:] = permute_compatible(right[1:],right_to_couple[1:],left_to_couple[1:])
-                        # check for sigmap_i * sigmam_j* rho part of the collective decay process
+                         # check for sigmap_i * sigmam_j* rho part of the collective decay process
                         num_down = sum(right[1:])
                         num_up = indices.nspins - num_down
-                        from math import factorial
-                        deg = factorial(num_down) * factorial(num_up)
+            
+                        deg = degeneracy_gamma_collective_same_block_pedestrian(left[1:], left_to_couple_permute[1:], right[1:])
                         
-                        deg1 = degeneracy_gamma_collective_same_block(left_to_couple_permute[1:], right[1:])
-                        deg2 = degeneracy_gamma_collective_same_block_rho_right_pedestrian(left[1:], left_to_couple_permute[1:], right[1:])
-                        print(deg, deg1,deg2)
-                        self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2*deg ) 
+                        # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
+                        if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
+                            deg=0
+                        if deg >0:
+                            self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2*deg ) 
                         
                    if(states_compatible(left, left_to_couple)) and right[0] == right_to_couple[0] and not (left_equal and right_equal):            
-                         # if they are compatible, permute right_to_couple appropriately for proper H element
+                          # if they are compatible, permute right_to_couple appropriately for proper H element
                         right_to_couple_permute = np.copy(right_to_couple)
                         if not left_equal:
                             right_to_couple_permute[1:] = permute_compatible(left[1:],left_to_couple[1:],right_to_couple[1:])
                             
                         num_down = sum(left[1:])
                         num_up = indices.nspins - num_down
-                        from math import factorial
-                        deg = factorial(num_down) * factorial(num_up)
                         
-                        deg = degeneracy_gamma_collective_same_block(right_to_couple_permute[1:], left[1:])
-                        self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2*deg ) 
+                        deg =  degeneracy_gamma_collective_same_block_pedestrian(right[1:], right_to_couple_permute[1:],left[1:])
+
+                        # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
+                        if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
+                            deg=0
+                        if deg>0:
+                            self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2*deg ) 
             
 
                if not contributed:
@@ -903,38 +807,6 @@ class BlockL:
                    #--------------------------------
                    
                    
-                   #------------------------------------------------------------------
-                   # COLLECTIVE DECAY OLD
-                   # sigmam_collective = 0
-                   # # Photons must remain the same
-                   # if (left[0] == left_to_couple[0] and right[0] == right_to_couple[0]):
-                   #     for k in range(indices.nspins):
-                   #         for l in range(indices.nspins):
-                   #             if k == l :
-                   #                 continue
-                   #             # the spins m, m' of the element we want to calculate the derivative of, sets the following constraint
-                   #             if left_spins[k] == 1 and right_spins[l] == 1: # m_k = down, m'_l = down
-                   #                 # construct "trial" spin states, which have those two spins flipped (which is a requirement for coupling)
-                   #                 left_spins_couple_trial = np.copy(left_spins)
-                   #                 left_spins_couple_trial[k] = 0   # j_k is up
-                   #                 right_spins_couple_trial = np.copy(right_spins)
-                   #                 right_spins_couple_trial[l] = 0   # w_l is up
-                                
-                   #                 # get the emerging element in proper order
-                   #                 xis = 2*left_spins_couple_trial + right_spins_couple_trial
-                   #                 sorted_indices = np.flip(np.argsort(xis))
-                   #                 # check if not sorted
-                   #                 if not np.all(sorted_indices[:-1] <= sorted_indices[1:]):
-                   #                     left_spins_couple_trial = left_spins_couple_trial[sorted_indices]
-                   #                     right_spins_couple_trial = right_spins_couple_trial[sorted_indices]
-                                
-                   #                 # check, if it agrees with the to_couple element
-                   #                 if (left_to_couple_spins == left_spins_couple_trial).all() and (right_to_couple_spins == right_spins_couple_trial).all():
-                   #                     sigmam_collective += 1
-                #-------------------------------------------------------------------------------
-                   # if nu_element == 1:
-                   #     if count_in == 2 and count_out ==1:
-                   #         print(1)
                 
                    # L1 part of collective decay L[sum_i sigmam_i] -> sigmam_i * rho * sigmap_j (VERY SIMILAR TO INDIVIDUAL DECAY)
                    # Photons must remain the same
@@ -943,8 +815,13 @@ class BlockL:
                        # number of spin up in "right" and "right_to_couple" as well as "left" and "left_to_coupole" vary by one
                        if (sum(left[1:]) - sum(left_to_couple[1:]) == 1) and (sum(right[1:]) - sum(right_to_couple[1:]) == 1):       
                            # Get the number of permutations, that contribute. (THIS DIFFERS FROM INDIVIDUAL DECAY)                             
-                           deg = degeneracy_gamma_collective_changing_block(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
-                           self.new_entry(L1_new, 'sigmam_collective', count_in, count_out, deg)
+                           deg = degeneracy_gamma_collective_changing_block(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])      
+                           
+                           # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
+                           if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
+                               deg = 0
+                           if deg >0:
+                               self.new_entry(L1_new, 'sigmam_collective', count_in, count_out, deg)
                            contributed = True
                    
                    
@@ -958,8 +835,6 @@ class BlockL:
                            # Get the number of permutations, that contribute.                             
                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
                            self.new_entry(L1_new, 'sigmam', count_in, count_out, deg)
-                           # sigmam_collective += deg
-                           # self.new_entry(L1_new, 'sigmam_collective', count_in, count_out, sigmam_collective)
 
                            contributed = True
                    
