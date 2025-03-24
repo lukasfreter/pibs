@@ -194,6 +194,10 @@ def degeneracy_gamma_collective_changing_block(outer1, outer2, inner1, inner2):
                 - 3->1 and 3->2
                 - 1->0 and 2->0
                 (for details see PIBS notes under collective decay, L1 part) 
+        - alternatively, all but one spin index is aligned, and that must be a transition 3->0 ( as in individual decay )
+        
+        Note: when this function is called, it is already guaranteed that outer1, outer2 have one less spin excitation than
+        inner1 and inner2 (just because of the way the Liouvillian construction function works)
                 
     
     INEFFICIENT WAY
@@ -202,11 +206,17 @@ def degeneracy_gamma_collective_changing_block(outer1, outer2, inner1, inner2):
     from sympy.utilities.iterables import multiset_permutations
     Oc = outer1 + 2*outer2
     Ic = inner1 + 2*inner2
+    Oc.sort()
+    Ic.sort()
    
     deg = 0
     for p in multiset_permutations(Ic): # loop through all unique permutations of Ic
         if sum(array(p) != Oc) <= 2:    # if the permuted Ic disagrees with Oc for maximum 2 indices, the permutation contributes (see PIBS notes)
             deg+=1
+            
+    print(Oc)
+    print(Ic)
+    print('diff', Oc-Ic, ', deg:', deg)
 
     return deg
     
@@ -222,24 +232,14 @@ def degeneracy_gamma_collective_changing_block_efficient(outer1, outer2, inner1,
                 - 1->0 and 2->0
                 (for details see PIBS notes under collective decay)
     
-    TO DO
+    TO DO ...
      """
     from numpy import where
     Oc = outer1 + 2*outer2
     Ic = inner1 + 2*inner2
-    # sort and check, if there are two different places, where the indices do not agree. Remember: we need 2 indices which do not agree because i!=j (see PIBS notes)
-    Oc.sort()
-    Ic.sort()
-    Oc = Oc[::-1] # not really necessary, I just like the ordering from big to small
-    Ic = Ic[::-1]
+    
+    
 
-    print('new')
-    print(Oc)
-    print(Ic)
-    if sum(Ic != Oc) != 2: # Ic != Oc is a boolean array with True if Ic[i] != Oc[i]. sum() gives the number of True. In our case, it must be 2 in order to contribute
-        print(0)
-        return 0 
-    print(1)
 
 
 # operators here?
@@ -350,7 +350,7 @@ def expect(oper, state):
 def vector_to_operator(op):
 
     n = int(np.sqrt(op.shape[0]))
-    q = sp_reshape(op.T, (n, n)).T
+    q = sp_reshape(op.T, (n, n)).T  # This seems to be quite expensive operation 
     return q
 
 

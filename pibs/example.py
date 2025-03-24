@@ -38,20 +38,28 @@ from sr_numerical_solution import solve_sr
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 7#int(sys.argv[1])#number 2LS
+ntls = 3#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0#0.35
 wc = 0#1.0
-Omega =0.4# 0.5
+Omega =0.1#0.4# 0.5
 g = Omega / np.sqrt(ntls)
-kappa = 0.01#5e-02
-gamma = 0.01#0.1#1e-03
-gamma_phi =0.1/4# 0.0075
+kappa = 1e-02
+gamma = 1e-03
+gamma_phi=3e-02/4
 gamma_phi_qutip = 4*gamma_phi
-gamma_collective = 1
+gamma_collective = 0.1
 
-dt = 0.01 # timestep
-tmax = 10-2*dt # for optimum usage of chunks in parallel evolution
+rates = {'H_n': wc,
+         'H_sigmaz': w0,
+         'H_g': g,
+         'a': kappa,
+         'sigmaz': gamma_phi,
+         'sigmam': gamma,
+         'sigmam_collective':gamma_collective}
+
+dt = 0.2 # timestep
+tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-8
@@ -100,29 +108,14 @@ rho_spin = sp.csr_matrix(rot_x @ basis(2,0) @ rot_x_dag) # First argument: spin 
 # print(rho_phot.todense())
 # sys.exit()
 scale = 1e3
-rho = Rho(rho_phot, rho_spin, indi) # initial condition with zero photons and all spins up.# sys.exit()
+rho = Rho(rho_phot, rho_spin, indi, max_nrs=1) # initial condition with zero photons and all spins up.# sys.exit()
 
 
 L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=True,save=False, num_cpus=None)
-# L.L0_basis['sigmam_collective'][1][0,0]=-2
-# L.L0_basis['sigmam_collective'][1][1,0]=-2
-# L.L0_basis['sigmam_collective'][1][0,1]=-1
-# L.L0_basis['sigmam_collective'][1][1,1]=-1
-# L.L0_basis['sigmam_collective'][2][0,0]=-6
-# L.L0_basis['sigmam_collective'][2][1,0]=-3
-# L.L0_basis['sigmam_collective'][2][0,1]=2
-# L.L0_basis['sigmam_collective'][2][1,1]=-1
+# sys.exit()
+# L.setup_L_generic(rates=rates, progress=True)
 
-# L.L0_basis['sigmam_collective'][2][0,2]=0
-# L.L0_basis['sigmam_collective'][2][2,0]=0
-
-
-# L.L1_basis['sigmam_collective'][1][0,0] = 7/3
-# L.L1_basis['sigmam_collective'][1][0,1] = 5/3
-# L.L1_basis['sigmam_collective'][1][1,0] = 10/3
-# L.L1_basis['sigmam_collective'][1][1,1] = 2/3
-
-L.setup_L_superradiance(gamma_collective)
+# L.setup_L_superradiance(gamma_collective)
 
 # for i in range(len(L.L1)):
 #     for j in range(L.L1[i].shape[0]):
@@ -137,19 +130,21 @@ L.setup_L_superradiance(gamma_collective)
 # sys.exit()
 
 # sys.exit()
-# L.setup_L_Tavis_Cummings(progress=True)
+L.setup_L_Tavis_Cummings(progress=False)
 
 
 # Operators for time evolution
 adag = tensor(create(nphot), qeye(2))
 a = tensor(destroy(nphot), qeye(2))
+adag = create(nphot)
+a = destroy(nphot)
 n = adag*a
 n2 = adag*a*adag*a
 p = tensor(qeye(nphot), sigmap()*sigmam())
 ops = [n,p] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=True)
+evolve.time_evolve_block_interp(ops, progress = False, expect_per_nu=False, start_block=None, save_states=False)
 # evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
