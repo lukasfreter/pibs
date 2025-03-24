@@ -821,7 +821,8 @@ class TimeEvolve():
             if nrs not in rhos_converted_dic:
                 rhos_converted_dic[nrs] = []
                 for count in range(len(rho_list)):
-                    rho_nrs = self.rho.convert_rho_block_dic[nrs][nu].dot(rho_list[count])
+                    # rho_nrs = self.rho.convert_rho_block_dic[nrs][nu].dot(rho_list[count]) # .dot
+                    rho_nrs = self.rho.convert_rho_block_dic[nrs][nu]@rho_list[count]   # @
                     rho_nrs = vector_to_operator(rho_nrs)
                     rhos_converted_dic[nrs].append(rho_nrs)
             
@@ -834,16 +835,19 @@ class TimeEvolve():
     
     
 def _intfunc(t, y, L):
-    return (L.dot(y))
+    # return (L.dot(y))
+    return (L@y)
 
 def _intfunc_block(t,y, L0, L1, y1):
     """ For blocks in block structure that couple do different excitation, described
     by L1 and y1"""    
     return(L0.dot(y) + L1.dot(y1))
+    
 
 def _intfunc_block_interp(t,y,L0,L1,y1_func):
     """ Same as _intfunc_block, but where y1 is given as a function of time"""
-    return (L0.dot(y) + L1.dot(y1_func(t)))
+    # return (L0.dot(y) + L1.dot(y1_func(t)))
+    return (L0 @ y + L1 @ y1_func(t))
 
 
         

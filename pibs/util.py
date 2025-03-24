@@ -342,7 +342,10 @@ def thermal_dm(N, nth):
 def expect(oper, state):
 
     # calculates expectation value via TR(op*rho)
-    return (oper.dot(state).toarray()).trace()
+    
+    return ((oper@state).toarray()).trace()
+    
+    # return (oper.dot(state).toarray()).trace()
 
 def vector_to_operator(op):
 
