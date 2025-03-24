@@ -666,10 +666,6 @@ class BlockL:
                        # Diagonal part of collective decay. Note also i!=j can contribute, so we have different degeneracy as for individual decay
                        deg_right = degeneracy_gamma_collective_same_block_pedestrian(left[1:], left_to_couple[1:],right[1:])
                        deg_left =  degeneracy_gamma_collective_same_block_pedestrian(right[1:], right_to_couple[1:],left[1:])
-                       # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
-                       if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
-                           deg_left=0
-                           deg_right= 0
                        self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2 * (deg_left+deg_right))      
                        
                        
@@ -756,10 +752,6 @@ class BlockL:
                         num_up = indices.nspins - num_down
             
                         deg = degeneracy_gamma_collective_same_block_pedestrian(left[1:], left_to_couple_permute[1:], right[1:])
-                        
-                        # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
-                        if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
-                            deg=0
                         if deg >0:
                             self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2*deg ) 
                         
@@ -773,10 +765,6 @@ class BlockL:
                         num_up = indices.nspins - num_down
                         
                         deg =  degeneracy_gamma_collective_same_block_pedestrian(right[1:], right_to_couple_permute[1:],left[1:])
-
-                        # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
-                        if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
-                            deg=0
                         if deg>0:
                             self.new_entry(L0_new, 'sigmam_collective', count_in, count_out, - 1/2*deg ) 
             
@@ -817,9 +805,6 @@ class BlockL:
                            # Get the number of permutations, that contribute. (THIS DIFFERS FROM INDIVIDUAL DECAY)                             
                            deg = degeneracy_gamma_collective_changing_block(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])      
                            
-                           # FOR DEBUGGING: WHENEVER ANY PHOTON NUMBMER IS ABOVE 0, MAKE COLLECTIVE DECAY 0. THIS IS TO TEST THE CASE WHERE THERE ARE NO PHOTONS
-                           if left[0]>0 or right[0] > 0 or left_to_couple[0]>0 or right_to_couple[0]>0:
-                               deg = 0
                            if deg >0:
                                self.new_entry(L1_new, 'sigmam_collective', count_in, count_out, deg)
                            contributed = True
@@ -1977,6 +1962,94 @@ class Models(BlockL):
             with open(save_path, 'wb') as handle:
                 pickle.dump(self, handle)
             print(f'Wrote full model to {save_path}.')
+            
+            
+            
+            
+    def setup_L_generic(self,rates,  progress=False, save_path=None):
+        """ Calculate generic Liouvillian. IGNORES RATES GIVEN IN CONSTRUCTOR OF Models CLASS
+        Parameters:
+            rates (dic) : dictionary that contains the dissipation rates.
+                         Form:
+                              rates = {'H_n': wc,
+                                       'H_sigmaz': w0,
+                                       'H_g': g,
+                                       'a': kappa,
+                                       'sigmaz': gamma_phi,
+                                       'sigmam': gamma,
+                                       'sigmam_collective' : sigmam_collective}
+    """
+        if self.verbose:
+            print('Given rates:', rates)
+    
+        t0 = time()
+        if self.indices.only_numax:
+            if self.verbose:
+                print('Calculating Liouvillian from basis (only nu_max) ...', flush =True)
+            if progress:
+                progress = False
+                if self.verbose:
+                    print('Disabled progress bar (only one step)')
+        else:
+            if self.verbose:
+                print('Calculating Liouvillian from basis ...', flush =True)
+        
+        names0 = ['H_sigmaz', 'H_n', 'H_g','a', 'sigmam', 'sigmaz', 'sigmam_collective']
+        names1 = ['sigmam' , 'a', 'sigmam_collective']
+        
+        
+        self.L0 = []
+        self.L1 = []
+        
+        num_blocks = len(self.indices.mapping_block)
+        
+        if progress: # progress bar
+            loops = 2*num_blocks-1
+            bar = Progress(loops,'Liouvillian: ')
+            
+        # Adapt loop if only_numax is true
+        if self.indices.only_numax:
+            nu_min = num_blocks - 1
+        else:
+            nu_min = 0
+        
+        for nu in range(nu_min, num_blocks):
+            current_blocksize = len(self.indices.mapping_block[nu])
+            #L0_scale = sp.csr_matrix(np.zeros((current_blocksize, current_blocksize), dtype=complex))
+            L0_scale = sp.csr_matrix((current_blocksize, current_blocksize), dtype=complex)
+            for name in names0:
+                if name in rates: # the key must be contained in rates dic. otherwise assume 0 value
+                    if self.indices.only_numax:
+                        L0_scale = L0_scale + rates[name] * self.L0_basis[name][0] # in Liouvillian basis, if only_numax is true, only one matrix is contained (i.e. different than mapping_block, which has nu_max-1 unfilled matrices, such that the old indices still work)
+                    else:
+                        L0_scale = L0_scale + rates[name] * self.L0_basis[name][nu]
+
+            self.L0.append( L0_scale)
+            
+            if progress:
+                bar.update()
+            
+            if nu < num_blocks -1:
+                next_blocksize = len(self.indices.mapping_block[nu+1])
+                #L1_scale = sp.csr_matrix(np.zeros((current_blocksize, next_blocksize), dtype=complex))
+                L1_scale = sp.csr_matrix((current_blocksize, next_blocksize), dtype=complex)
+                
+                for name in names1:
+                    if name in rates:
+                        L1_scale = L1_scale + rates[name] * self.L1_basis[name][nu]
+                self.L1.append(L1_scale)   
+                
+                if progress:
+                    bar.update()
+ 
+        elapsed = time()-t0
+        if self.verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
+        if save_path is not None:
+            with open(save_path, 'wb') as handle:
+                pickle.dump(self, handle)
+            if self.verbose:
+                print(f'Wrote full model to {save_path}.')
             
             
             
