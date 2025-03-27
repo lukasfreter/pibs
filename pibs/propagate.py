@@ -615,7 +615,7 @@ class TimeEvolve():
         
      
         
-    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False, start_block=None):
+    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False, start_block=None, verbose=True):
         """ Time evolution of the block structure without resetting the solver at each step.
         Do so by interpolating feedforward.
         
@@ -629,7 +629,8 @@ class TimeEvolve():
         
         """      
         
-        print('Starting time evolution serial block (interpolation)...')
+        if verbose:
+            print('Starting time evolution serial block (interpolation)...')
         tstart = time()
                
         # store number of elements in each block
@@ -746,7 +747,9 @@ class TimeEvolve():
         #self.result.t = np.arange(t0, self.tend+self.dt,self.dt)
         if self.indices.only_numax:
             elapsed = time()-tstart
-            print(f'Complete {elapsed:.0f}s', flush=True)
+            
+            if verbose:
+                print(f'Complete {elapsed:.0f}s', flush=True)
             return
         
         # Now, do the feed forward for all other blocks. Need different integration function, _intfunc_block_interp
@@ -795,7 +798,8 @@ class TimeEvolve():
                 self.result.rho[nu][:,1] = rho_nu[:,-1] 
 
         elapsed = time()-tstart
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
     
     

@@ -38,15 +38,15 @@ from sr_numerical_solution import solve_sr
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 3#int(sys.argv[1])#number 2LS
+ntls = 10#int(sys.argv[1])#number 2LS
 nphot = ntls+1
 w0 = 0#0.35
 wc = 0#1.0
-Omega =0.1#0.4# 0.5
+Omega =0.4#0.4# 0.5
 g = Omega / np.sqrt(ntls)
 kappa = 1e-02
-gamma = 1e-03
-gamma_phi=3e-02/4
+gamma = 1e-02
+gamma_phi=3e-01/4
 gamma_phi_qutip = 4*gamma_phi
 gamma_collective = 0.1
 
@@ -58,8 +58,8 @@ rates = {'H_n': wc,
          'sigmam': gamma,
          'sigmam_collective':gamma_collective}
 
-dt = 0.2 # timestep
-tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
+dt = 0.4 # timestep
+tmax = 500-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-8
@@ -68,7 +68,7 @@ nsteps=1000
 
 
 indi = Indices(ntls,nphot, debug=True, save = False)
-indi.print_elements()
+# indi.print_elements()
 
 # sys.exit()
 
@@ -111,7 +111,7 @@ scale = 1e3
 rho = Rho(rho_phot, rho_spin, indi, max_nrs=1) # initial condition with zero photons and all spins up.# sys.exit()
 
 
-L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=True,save=False, num_cpus=None)
+L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=True, debug=False,save=False, num_cpus=None)
 # sys.exit()
 # L.setup_L_generic(rates=rates, progress=True)
 
@@ -141,21 +141,21 @@ a = destroy(nphot)
 n = adag*a
 n2 = adag*a*adag*a
 p = tensor(qeye(nphot), sigmap()*sigmam())
-ops = [n,p] # operators to calculate expectations for
+ops = [n,p,n2] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = False, expect_per_nu=False, start_block=None, save_states=False)
+evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=False)
 # evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
-# e_phot_n2 = evolve.result.expect[2].real
+e_phot_n2 = evolve.result.expect[2].real
 #expect_per_nu_phot = np.squeeze(evolve.result.expect_per_nu[:,0,:])
 t = evolve.result.t
 
 # g2 function: g2(t, 0)
-# G2 = e_phot_n2 - e_phot_tot # < adag adag a a> = <n²> - <n>
-# g2 = G2 / e_phot_tot**2
+G2 = e_phot_n2[1:] - e_phot_tot[1:] # < adag adag a a> = <n²> - <n>
+g2 = G2 / e_phot_tot[1:]**2
 
 
 # two time correlations: g1
@@ -198,15 +198,16 @@ ax[0].plot(t, e_phot_tot/ntls, label='n')
 ax[0].set_xlabel(r'$t$')
 ax[0].set_ylabel(r'$\langle n\rangle$')
 # ax[1].plot(t[1:], -np.diff(e_excit_site))
-ax[1].plot(t, e_excit_site)
-ax[1].plot(t_me, e_excit_site_me, ls='--')
+# ax[1].plot(t, e_excit_site)
+# ax[1].plot(t_me, e_excit_site_me, ls='--')
+ax[1].plot(t[1:], g2)
 ax[1].set_xlabel(r'$t$')
 ax[1].set_ylabel(r'$\langle \sigma_i^+\sigma_i^-\rangle$')
 fig.suptitle(r'$N={N}$'.format(N=ntls))
 ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
 ax[0].legend()
 plt.show()
-# sys.exit()
+sys.exit()
 
 
 
