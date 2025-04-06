@@ -615,7 +615,7 @@ class TimeEvolve():
         
      
         
-    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False, start_block=None):
+    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False, start_block=None, verbose=True):
         """ Time evolution of the block structure without resetting the solver at each step.
         Do so by interpolating feedforward.
         
@@ -629,7 +629,8 @@ class TimeEvolve():
         
         """      
         
-        print('Starting time evolution serial block (interpolation)...')
+        if verbose:
+            print('Starting time evolution serial block (interpolation)...')
         tstart = time()
                
         # store number of elements in each block
@@ -746,7 +747,9 @@ class TimeEvolve():
         #self.result.t = np.arange(t0, self.tend+self.dt,self.dt)
         if self.indices.only_numax:
             elapsed = time()-tstart
-            print(f'Complete {elapsed:.0f}s', flush=True)
+            
+            if verbose:
+                print(f'Complete {elapsed:.0f}s', flush=True)
             return
         
         # Now, do the feed forward for all other blocks. Need different integration function, _intfunc_block_interp
@@ -795,7 +798,8 @@ class TimeEvolve():
                 self.result.rho[nu][:,1] = rho_nu[:,-1] 
 
         elapsed = time()-tstart
-        print(f'Complete {elapsed:.0f}s', flush=True)
+        if verbose:
+            print(f'Complete {elapsed:.0f}s', flush=True)
         
     
     
@@ -821,7 +825,8 @@ class TimeEvolve():
             if nrs not in rhos_converted_dic:
                 rhos_converted_dic[nrs] = []
                 for count in range(len(rho_list)):
-                    rho_nrs = self.rho.convert_rho_block_dic[nrs][nu].dot(rho_list[count])
+                    # rho_nrs = self.rho.convert_rho_block_dic[nrs][nu].dot(rho_list[count]) # .dot
+                    rho_nrs = self.rho.convert_rho_block_dic[nrs][nu]@rho_list[count]   # @
                     rho_nrs = vector_to_operator(rho_nrs)
                     rhos_converted_dic[nrs].append(rho_nrs)
             
@@ -834,16 +839,19 @@ class TimeEvolve():
     
     
 def _intfunc(t, y, L):
-    return (L.dot(y))
+    # return (L.dot(y))
+    return (L@y)
 
 def _intfunc_block(t,y, L0, L1, y1):
     """ For blocks in block structure that couple do different excitation, described
     by L1 and y1"""    
     return(L0.dot(y) + L1.dot(y1))
+    
 
 def _intfunc_block_interp(t,y,L0,L1,y1_func):
     """ Same as _intfunc_block, but where y1 is given as a function of time"""
-    return (L0.dot(y) + L1.dot(y1_func(t)))
+    # return (L0.dot(y) + L1.dot(y1_func(t)))
+    return (L0 @ y + L1 @ y1_func(t))
 
 
         

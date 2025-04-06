@@ -17,53 +17,64 @@ sys.path.insert(0, '..')
 import numpy as np
 from setup import Indices, Rho, Models
 from propagate import TimeEvolve
-from util import qeye, create, destroy, sigmam, sigmap, tensor, basis
+from util import qeye, create, destroy, sigmam, sigmap, tensor, basis, thermal_dm
 import matplotlib.pyplot as plt
 from time import time
 import pickle
 import multiprocessing
 import scipy.sparse as sp
 from util import wigner_d
+sys.path.insert(1, '../../../codes/thisandthat/')
+from sr_numerical_solution import solve_sr
 
 
-plt.rcParams.update({'font.size': 12,
-                      'xtick.labelsize' : 12,
-                      'ytick.labelsize' : 12,
-                      'lines.linewidth' : 1.5,
-                      'lines.markersize': 5,
-                      'figure.figsize': (10,6),
-                      'figure.dpi': 150})
+# plt.rcParams.update({'font.size': 12,
+#                       'xtick.labelsize' : 12,
+#                       'ytick.labelsize' : 12,
+#                       'lines.linewidth' : 1.5,
+#                       'lines.markersize': 5,
+#                       'figure.figsize': (10,6),
+#                       'figure.dpi': 150})
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls =1#int(sys.argv[1])#number 2LS
+ntls = 10#int(sys.argv[1])#number 2LS
 nphot = ntls+1
-w0 = 1.0
-wc = 1.0
-Omega = 0.1
+w0 = 0#0.35
+wc = 0#1.0
+Omega =0.4#0.4# 0.5
 g = Omega / np.sqrt(ntls)
-kappa = 0.01
-gamma = 0#1e-03
-gamma_phi = 0#0.0075
+kappa = 1e-02
+gamma = 1e-02
+gamma_phi=3e-01/4
 gamma_phi_qutip = 4*gamma_phi
+gamma_collective = 0.1
 
-dt = 0.2 # timestep
-tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
+rates = {'H_n': wc,
+         'H_sigmaz': w0,
+         'H_g': g,
+         'a': kappa,
+         'sigmaz': gamma_phi,
+         'sigmam': gamma,
+         'sigmam_collective':gamma_collective}
+
+dt = 0.4 # timestep
+tmax = 500-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
-atol=1e-12
-rtol=1e-12
+atol=1e-8
+rtol=1e-8
 nsteps=1000
 
 
 indi = Indices(ntls,nphot, debug=True, save = False)
-indi.print_elements()
+# indi.print_elements()
 
 # sys.exit()
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = 0#np.pi/4
+theta = 0
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -91,46 +102,112 @@ rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2),
 # sys.exit()
 
 rho_phot = basis(nphot,0) # second argument: number of photons in initial state
+# rho_phot = thermal_dm(nphot, nth=1/2)
 rho_spin = sp.csr_matrix(rot_x @ basis(2,0) @ rot_x_dag) # First argument: spin dimension 2. Second argument: 0=up, 1=down
 
+# print(rho_phot.todense())
+# sys.exit()
 scale = 1e3
-rho = Rho(rho_phot, rho_spin, indi) # initial condition with zero photons and all spins up.# sys.exit()
+rho = Rho(rho_phot, rho_spin, indi, max_nrs=1) # initial condition with zero photons and all spins up.# sys.exit()
 
 
-L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=True, debug=False,save=True, num_cpus=None)
-L.setup_L_Tavis_Cummings(progress=True)
+L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=True, debug=False,save=False, num_cpus=None)
+# sys.exit()
+# L.setup_L_generic(rates=rates, progress=True)
+
+# L.setup_L_superradiance(gamma_collective)
+
+# for i in range(len(L.L1)):
+#     for j in range(L.L1[i].shape[0]):
+#         for k in range(L.L1[i].shape[1]):
+#             L.L1[i][j,k]=0.0
+            
+# for i in range(len(L.L0)):
+#     for j in range(L.L0[i].shape[0]):
+#         for k in range(L.L0[i].shape[1]):
+#             L.L0[i][j,k]=0.0
+
+# sys.exit()
+
+# sys.exit()
+L.setup_L_Tavis_Cummings(progress=False)
 
 
 # Operators for time evolution
-n = tensor(create(nphot)*destroy(nphot), qeye(2))
+adag = tensor(create(nphot), qeye(2))
+a = tensor(destroy(nphot), qeye(2))
+adag = create(nphot)
+a = destroy(nphot)
+n = adag*a
+n2 = adag*a*adag*a
 p = tensor(qeye(nphot), sigmap()*sigmam())
-ops = [n,p] # operators to calculate expectations for
+ops = [n,p,n2] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=True, start_block=None)
+evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=False)
 # evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
-expect_per_nu_phot = np.squeeze(evolve.result.expect_per_nu[:,0,:])
+e_phot_n2 = evolve.result.expect[2].real
+#expect_per_nu_phot = np.squeeze(evolve.result.expect_per_nu[:,0,:])
 t = evolve.result.t
 
+# g2 function: g2(t, 0)
+G2 = e_phot_n2[1:] - e_phot_tot[1:] # < adag adag a a> = <n²> - <n>
+g2 = G2 / e_phot_tot[1:]**2
+
+
+# two time correlations: g1
+# rho_phot_g1 = rho_phot @ create(nphot)
+# rho = Rho(rho_phot_g1, rho_spin, indi)
+# ops = [a]
+# evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
+# evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
+# G1 = evolve.result.expect[0]
+# g1 = G1 / np.sqrt(e_phot_tot[0] * e_phot_tot)
+
+
+# # two time correlations: g2
+# rho_phot_g2 = destroy(nphot) @ rho_phot @ create(nphot)
+# rho = Rho(rho_phot_g2, rho_spin, indi)
+# ops = [n]
+# evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
+# evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None)
+# G2 = evolve.result.expect[0]
+# g2 = G2 / (e_phot_tot[0] * e_phot_tot)
+
+
+# my solution
+rho, t_me, Jz_me = solve_sr(ntls, gamma_collective,mode='', num=500, tmax=tmax)
+e_excit_site_me = (2*Jz_me + ntls)/2 / ntls
 runtime = time() - t0
 
 fig, ax = plt.subplots(2,1)
-ax[0].plot(t, e_phot_tot/ntls)
+ax[0].plot(t, e_phot_tot/ntls, label='n')
+# ax[0].plot(t, e_phot_n2/ntls**2, label='n^2')
+# ax[0].plot(t, g1,label='g1')
+
+# ax[0].plot(t, g2,label='g2')
+# ax[0].plot(t, g2_c2, label='g2 c2')
+# ax[0].plot(t, G2/e_phot_tot**2)
+# ax[0].plot(t, e_phot_tot, ls='--')
+# ax[0].plot(t, g2_tau)
+# ax[0].plot(t, e_phot_tot/ntls)
+
 ax[0].set_xlabel(r'$t$')
 ax[0].set_ylabel(r'$\langle n\rangle$')
-ax[1].plot(t, e_excit_site)
-ax[1].plot(t, np.exp(-t*kappa))
+# ax[1].plot(t[1:], -np.diff(e_excit_site))
+# ax[1].plot(t, e_excit_site)
+# ax[1].plot(t_me, e_excit_site_me, ls='--')
+ax[1].plot(t[1:], g2)
 ax[1].set_xlabel(r'$t$')
 ax[1].set_ylabel(r'$\langle \sigma_i^+\sigma_i^-\rangle$')
 fig.suptitle(r'$N={N}$'.format(N=ntls))
 ax[0].set_title(r'$\Delta={delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(delta=wc-w0, Omega=Omega,kappa=kappa,gamma=gamma,gamma_phi=gamma_phi,theta=theta))
-# ax.legend()
+ax[0].legend()
 plt.show()
 sys.exit()
-
 
 
 
@@ -214,18 +291,26 @@ params = {
     'rtol':rtol,
     
     }
+# e_phot_tot = np.sin(1*2*np.pi*t) + np.exp(-1j*2*np.pi*2*t)
 res = {
     't':t,
     'e_phot_tot': e_phot_tot,
-    'e_excit_site': e_excit_site,    
+    'e_excit_site': e_excit_site, 
+    # 'e_phot_a' : e_phot_a,
+    #'e_phot_n2' : e_phot_n2,
+    #'G2_tau0' : G2,
+    #'g2_tau0': g2
         }
 data = {
         'params': params,
         'results': res,
         'runtime': runtime}
 
-# fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
+fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
 fname = f'results/example.pkl'
+# fname = 'results/test_sin.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
     pickle.dump(data,handle)
+    
+print('Stored in ', fname)

@@ -77,15 +77,16 @@ def permute_compatible(comp1, comp2, permute):
     return cp_permute
 
 def degeneracy_spin_gamma(spin1, spin2):
-    """Return number of indices where spin1 and spin2 are up"""
+    """Return number of indices where spin1 and spin2 are up. For L0 part of
+    individual loss L[sigmam]"""
     return np.count_nonzero(spin1+spin2==0)
 
 def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
     """Find simultaneous permutation of inner1 and inner2, such that all but one
     spin index align, and in exactly the same positions. This is necessary
-    for calculating the Lindblad operator of sigma minus. Inefficient way """
+    for calculating the Lindblad operator of sigma minus (individual decay). efficient way """
     from itertools import permutations
-    from numpy import array, concatenate, where, not_equal
+    from numpy import where
     Oc = outer1 + 2*outer2
     Ic = inner1 + 2*inner2
     
@@ -96,6 +97,150 @@ def degeneracy_gamma_changing_block_efficient(outer1, outer2, inner1, inner2):
         return outer_num3
     else:
         return 0
+    
+        
+
+def degeneracy_gamma_collective_same_block_pedestrian(outer, change_permute, invariant_permute):
+    """ Calculate the degeneracy for the term  -1/2 * sigmap_i * sigmam_j * rho or -1/2* rho * sigmap_i *sigmam_j
+        Quite inefficient, just proof of concept. Need to work on more efficient way later.
+        
+        For the term -1/2 * sigmap_i * sigmam_j * rho : 
+            invariant_permute = right
+            change_permute = left_to_couple_permute
+            outer = left
+            
+            
+        For the term -1/2 * rho * sigmap_i *sigmam_j:
+            invariant_permute = left
+            change_permute = right_to_couple_permute
+            outer = right
+        
+        In the following, the concept is explained using the -1/2 * sigmap_i * sigmam_j * rho term:
+        
+        Go through all combined permutations of the spin states 'left_to_couple_permute' and 'right', that leave 'right' invariant and change 'left_to_couple_permute'.
+        
+        Recipe for getting valid permutations:
+            Calculate Oc = change_permute + 2*invariant_permute
+            Observe: If invariant_permute must remain the same under a permutation but change_permute must change, then that
+            can only mean that we swap 3 <-> 2 and 1<->0 in this Oc array!
+        
+        Then determine for each permutation
+            -does this permutation have non-zero matrix element by checking if exactly one 1 and one 2 appear in 'right' + 2*'left_to_couple_permute' (i!=j)
+                In that case, there is a up-down transition and a down-up transition at different places (i.e. at i and j, respectively)
+            -does this permutation have non-zero matrix element by checking if only 3 and 0 appear in right + 2*left_to_couple_permute (i=j)
+                In that case, the spin state in 'right' is the same as the spin state in 'left_to_couple_permute'. This means there is only a contribution for i=j,
+                because the spin states must not change. This is then the degeneracy we already calculate for individual decay and is just the number of 'up' spins
+    
+    """
+    from sympy.utilities.iterables import multiset_permutations
+
+    # Find all distinct permutations of change_permute and invariant_permute, that leave invariant_permute invariant and change change_permute
+    # by calculating change_permute + 2*invariant_permute. Then, It is allowed to swap 3 and 2, and 1 and 0.
+    Oc = change_permute + 2*invariant_permute
+    
+    arr01 = []
+    arr23 = []
+
+
+    idx_map_01 = []
+    idx_map_23 = []
+    for i in range(len(Oc)):
+        if Oc[i] == 1 or Oc[i] == 0:
+            arr01.append(Oc[i])
+            idx_map_01.append(i)
+        else:
+            arr23.append(Oc[i])
+            idx_map_23.append(i)
+
+    
+    # get new indices in the shortened arrays
+    deg = 0
+    # now we can go through the unique permutations of arr01 and arr23
+    for p01 in multiset_permutations(arr01):
+        for p23 in multiset_permutations(arr23):
+            # build the left and right spin states for sigmap_i *sigmam_j
+            Oc_perm = np.zeros(len(Oc))
+            for i in range(len(p01)):
+                Oc_perm[idx_map_01[i]] = p01[i]
+            for j in range(len(p23)):
+                Oc_perm[idx_map_23[j]] = p23[j]
+            
+            # calculate new left_to_couple
+            ltc_new = Oc_perm - 2*invariant_permute
+            
+            # with this new left_to_couple, calculate left+2*left_to_couple 
+            x = outer + 2*ltc_new
+            pos_1 = np.where(x==1)[0] # indices where x array is 1
+            pos_2 = np.where(x==2)[0] # indices where x array is 2
+            if len(pos_1) == 1 and len(pos_2) == 1:# check if it contains exactly one 1 and one 2 -> case i != j
+                deg += 1
+            elif len(pos_1) == 0 and len(pos_2) == 0: # check, if there are only 0 and 3 in the array -> case i=j
+                deg += np.count_nonzero(outer==0) # degeneracy = number of spin up; spin up is represented by 0; so count number of zeros.
+    
+    return deg
+    
+    
+    
+    
+    
+    
+    
+def degeneracy_gamma_collective_changing_block(outer1, outer2, inner1, inner2):
+    """Find simultaneous permutation of inner1 and inner2, such that:
+        - all but two spin indices are aligned
+        - the two that do not align must be such that from Oc -> Ic there is a transition:
+                - 3->1 and 1->0
+                - 3->2 and 2->0
+                - 3->1 and 3->2
+                - 1->0 and 2->0
+                (for details see PIBS notes under collective decay, L1 part) 
+        - alternatively, all but one spin index is aligned, and that must be a transition 3->0 ( as in individual decay )
+        
+        Note: when this function is called, it is already guaranteed that outer1, outer2 have one less spin excitation than
+        inner1 and inner2 (just because of the way the Liouvillian construction function works)
+                
+    
+    INEFFICIENT WAY
+     """
+    from numpy import where, array
+    from sympy.utilities.iterables import multiset_permutations
+    Oc = outer1 + 2*outer2
+    Ic = inner1 + 2*inner2
+    Oc.sort()
+    Ic.sort()
+   
+    deg = 0
+    for p in multiset_permutations(Ic): # loop through all unique permutations of Ic
+        if sum(array(p) != Oc) <= 2:    # if the permuted Ic disagrees with Oc for maximum 2 indices, the permutation contributes (see PIBS notes)
+            deg+=1
+            
+    print(Oc)
+    print(Ic)
+    print('diff', Oc-Ic, ', deg:', deg)
+
+    return deg
+    
+    
+    
+def degeneracy_gamma_collective_changing_block_efficient(outer1, outer2, inner1, inner2):
+    """Find simultaneous permutation of inner1 and inner2, such that:
+        - all but two spind indices are aligned
+        - the two that do not align must be such that from Oc -> Ic there is a transition:
+                - 3->1 and 1->0
+                - 3->2 and 2->0
+                - 3->1 and 3->2
+                - 1->0 and 2->0
+                (for details see PIBS notes under collective decay)
+    
+    TO DO ...
+     """
+    from numpy import where
+    Oc = outer1 + 2*outer2
+    Ic = inner1 + 2*inner2
+    
+    
+
+
 
 # operators here?
 
@@ -177,16 +322,35 @@ def basis(N, n=0):
     bas = bas.tocsr()
 
     return tensor(bas, bas.T)
+
+def thermal_dm(N, nth):
+    """ Create thermal density matreix for N-level Hilbert space with average
+    photon number nth"""
+    if (not isinstance(N, (int, np.integer))) or N < 0:
+        raise ValueError("N must be integer N >= 0")
+
+    dm = np.zeros((N,N))
+    x= nth /(1+nth)
+    Z = (1 - x**N) / (1 - x)  # partition function
+    for i in range(N):
+       dm[i,i] = 1.0 / Z * x**i
+        
+    return sp.csr_matrix(dm)
+        
+        
     
 def expect(oper, state):
 
     # calculates expectation value via TR(op*rho)
-    return (oper.dot(state).toarray()).trace()
+    
+    return ((oper@state).toarray()).trace()
+    
+    # return (oper.dot(state).toarray()).trace()
 
 def vector_to_operator(op):
 
     n = int(np.sqrt(op.shape[0]))
-    q = sp_reshape(op.T, (n, n)).T
+    q = sp_reshape(op.T, (n, n)).T  # This seems to be quite expensive operation 
     return q
 
 
