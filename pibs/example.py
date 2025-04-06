@@ -36,19 +36,19 @@ plt.rcParams.update({'font.size': 12,
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls =3#int(sys.argv[1])#number 2LS
-nphot = 4#ntls+1
+ntls =1#int(sys.argv[1])#number 2LS
+nphot = ntls+1
 w0 = 1.0
 wc = 1.0
 Omega = 0.1
 g = Omega / np.sqrt(ntls)
-kappa = 0#1e-02
+kappa = 0.01
 gamma = 0#1e-03
 gamma_phi = 0#0.0075
 gamma_phi_qutip = 4*gamma_phi
 
 dt = 0.2 # timestep
-tmax = 200-2*dt # for optimum usage of chunks in parallel evolution
+tmax = 100-2*dt # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-12
@@ -97,7 +97,7 @@ scale = 1e3
 rho = Rho(rho_phot, rho_spin, indi) # initial condition with zero photons and all spins up.# sys.exit()
 
 
-L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=1,progress=True, debug=False,save=True, num_cpus=None)
+L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=True, debug=False,save=True, num_cpus=None)
 L.setup_L_Tavis_Cummings(progress=True)
 
 
@@ -122,6 +122,7 @@ ax[0].plot(t, e_phot_tot/ntls)
 ax[0].set_xlabel(r'$t$')
 ax[0].set_ylabel(r'$\langle n\rangle$')
 ax[1].plot(t, e_excit_site)
+ax[1].plot(t, np.exp(-t*kappa))
 ax[1].set_xlabel(r'$t$')
 ax[1].set_ylabel(r'$\langle \sigma_i^+\sigma_i^-\rangle$')
 fig.suptitle(r'$N={N}$'.format(N=ntls))
@@ -155,37 +156,38 @@ sys.exit()
     
 #     }
 
-# import itertools
-# color = itertools.cycle(('-', '--',':'))
-# fname = 'results/pibs_parallel_mp_N100_Delta-0.35_Omega0.4_kappa0.01_gamma0.001_gammaphi0.0075_tmax100.0_atol1e-18_rtol1e-15_solverbdf_nsteps10000_scale1000000_perNuTrue.pkl'
-# with open(fname, 'rb') as handle:
-#     data= pickle.load(handle)
-# t = data['results']['t']
-# expect_per_nu_phot = data['results']['e_phot_tot_nu']
-# common_params = data['params']
+import itertools
+color = itertools.cycle(('-', '--',':'))
+fname = 'results/pibs_parallel_mp_N100_Delta-0.35_Omega0.4_kappa0.01_gamma0.001_gammaphi0.0075_tmax100.0_atol1e-18_rtol1e-15_solverbdf_nsteps10000_scale1000000_perNuTrue.pkl'
+with open(fname, 'rb') as handle:
+    data= pickle.load(handle)
+t = data['results']['t']
+expect_per_nu_phot = data['results']['e_phot_tot_nu']
+common_params = data['params']
 
 
-# fig, ax = plt.subplots(1,2)
-# count = 0
-# for nu in range(common_params['N'],-1,-1):
-#     if max(expect_per_nu_phot[nu,:]) < 1e-2 and False:
-#         continue
-#     count+=1
-#     ls = next(color)
-#     ax[0].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
-#     ax[1].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
-# ax[0].set_xlabel(r'$t$')
-# ax[0].set_ylabel(r'$\langle n\rangle$')
-# ax[1].set_xlabel(r'$t$')
-# ax[1].set_ylabel(r'$\langle n\rangle$')
-# ax[1].set_yscale('log')
-# ax[0].legend(ncol=2)
-# fig.suptitle(r'$N={N},\ \Delta={Delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(**common_params))
-# plt.tight_layout()
-# plt.show()
-# print(count)
+fig, ax = plt.subplots(1,2)
+count = 0
+for nu in range(common_params['N'],-1,-1):
+    if max(expect_per_nu_phot[nu,:]) < 1e-2 and False:
+        continue
+    count+=1
+    ls = next(color)
+    ax[0].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
+    ax[1].plot(t, expect_per_nu_phot[nu, :].real,ls=ls, label=r'$\nu={nu}$'.format(nu=nu))
 
-# sys.exit()
+ax[0].set_xlabel(r'$t$')
+ax[0].set_ylabel(r'$\langle n\rangle$')
+ax[1].set_xlabel(r'$t$')
+ax[1].set_ylabel(r'$\langle n\rangle$')
+ax[1].set_yscale('log')
+ax[0].legend(ncol=2)
+fig.suptitle(r'$N={N},\ \Delta={Delta},\ g\sqrt{{N}}={Omega},\ \kappa={kappa},\ \gamma={gamma},\ \gamma_\phi={gamma_phi},\ \theta={theta}$'.format(**common_params))
+plt.tight_layout()
+plt.show()
+print(count)
+
+sys.exit()
     
 
 
