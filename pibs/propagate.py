@@ -481,7 +481,7 @@ class TimeEvolve():
                     #print('t_ff', t_ff[0], t_ff[-1], 'ff', feedforward[:,0], feedforward[:,-1])
 
                     
-                    feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
+                    feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate', kind='cubic')
                     
                     arglist.append((initial[nu], feedforward_func, t0_nu, nu, chunksize, save_initial, self.rtol,self.atol,method))
                 else:
@@ -755,7 +755,7 @@ class TimeEvolve():
         # Now, do the feed forward for all other blocks. Need different integration function, _intfunc_block_interp
         for nu in range(start_block - 1, -1,-1):           
             #rho_interp = interp1d(self.result.t, rhos[nu+1], bounds_error=False, fill_value="extrapolate") # extrapolate results from previous block
-            rho_interp = interp1d(solver_times, rho_nu, bounds_error=False, fill_value="extrapolate") # interpolate results from previous block, rho_nu                  
+            rho_interp = interp1d(solver_times, rho_nu, bounds_error=False, fill_value="extrapolate", kind='cubic') # interpolate results from previous block, rho_nu                  
                        
             r = ode(_intfunc_block_interp).set_integrator('zvode', method = method, atol=self.atol, rtol=self.rtol, nsteps=self.nsteps)
             r.set_initial_value(self.rho.initial[nu],t0).set_f_params(self.L.L0[nu], self.L.L1[nu], rho_interp)
@@ -943,7 +943,7 @@ def evolve_nu_ray_solver_times(arglist):
         
         
         # calculate interpolation function of feedforward data to feed into differential equation for block nu
-        feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
+        feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate', kind='cubic')
         
         # integrator 
         r = ode(_intfunc_block_interp).set_integrator('zvode', method = 'bdf', atol=atol, rtol=rtol)
@@ -986,7 +986,7 @@ def evolve_nu_ray_solver_times(arglist):
                 
                # print('t_ff', t_ff[0], t_ff[-1], 'ff', feedforward[:,0], feedforward[:,-1])
                 
-                feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate')
+                feedforward_func = interp1d(t_ff, feedforward, bounds_error=False, fill_value='extrapolate',kind='cubic')
                 r = ode(_intfunc_block_interp).set_integrator('zvode', method='bdf', atol=atol, rtol=rtol).set_initial_value(r.y,r.t).set_f_params(L0,L1, feedforward_func)
                      
             n_t += 1    

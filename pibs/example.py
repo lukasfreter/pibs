@@ -38,15 +38,15 @@ from sr_numerical_solution import solve_sr
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 10#int(sys.argv[1])#number 2LS
+ntls = 30#int(sys.argv[1])#number 2LS
 nphot = ntls+1
-w0 = 0#0.35
+w0 = 0
 wc = 0#1.0
 Omega =0.4#0.4# 0.5
 g = Omega / np.sqrt(ntls)
-kappa = 1e-02
-gamma = 1e-02
-gamma_phi=3e-01/4
+kappa = 0.1
+gamma = 1e-01
+gamma_phi=2e-01
 gamma_phi_qutip = 4*gamma_phi
 gamma_collective = 0.1
 
@@ -58,12 +58,12 @@ rates = {'H_n': wc,
          'sigmam': gamma,
          'sigmam_collective':gamma_collective}
 
-dt = 0.4 # timestep
-tmax = 500-2*dt # for optimum usage of chunks in parallel evolution
+dt = 0.1 # timestep
+tmax = 50 # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
-atol=1e-8
-rtol=1e-8
+atol=1e-12
+rtol=1e-12
 nsteps=1000
 
 
@@ -74,7 +74,7 @@ indi = Indices(ntls,nphot, debug=True, save = False)
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = 0
+theta = 0.5
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -157,6 +157,56 @@ t = evolve.result.t
 G2 = e_phot_n2[1:] - e_phot_tot[1:] # < adag adag a a> = <n²> - <n>
 g2 = G2 / e_phot_tot[1:]**2
 
+runtime = time() - t0
+
+
+# store results
+params = {
+    'method': 'pibs',
+    'N': ntls,
+    'nphot': nphot,
+    'w0': w0,
+    'wc': wc,
+    'Delta': wc- w0,
+    'gamma': gamma,
+    'gamma_phi': gamma_phi, # value that we actually feed into code
+    'gamma_phi_qutip': gamma_phi*4, # gammaphi that is consistent with qutip 
+    'kappa': kappa,
+    'Omega': Omega,
+    'tmax': tmax,
+    'dt': dt,
+    'theta': theta,
+    'chunksize':chunksize,
+    'nsteps': nsteps,
+    'atol':atol,
+    'rtol':rtol,
+    
+    }
+# e_phot_tot = np.sin(1*2*np.pi*t) + np.exp(-1j*2*np.pi*2*t)
+res = {
+    't':t,
+    'e_phot_tot': e_phot_tot,
+    'e_excit_site': e_excit_site, 
+    # 'e_phot_a' : e_phot_a,
+    'e_phot_n2' : e_phot_n2,
+    #'G2_tau0' : G2,
+    #'g2_tau0': g2
+        }
+data = {
+        'params': params,
+        'results': res,
+        'runtime': runtime}
+
+fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
+# fname = f'results/example.pkl'
+# fname = 'results/test_sin.pkl'
+#save results in pickle file
+with open(fname, 'wb') as handle:
+    pickle.dump(data,handle)
+    
+print('Stored in ', fname)
+sys.exit()
+
 
 # two time correlations: g1
 # rho_phot_g1 = rho_phot @ create(nphot)
@@ -181,7 +231,6 @@ g2 = G2 / e_phot_tot[1:]**2
 # my solution
 rho, t_me, Jz_me = solve_sr(ntls, gamma_collective,mode='', num=500, tmax=tmax)
 e_excit_site_me = (2*Jz_me + ntls)/2 / ntls
-runtime = time() - t0
 
 fig, ax = plt.subplots(2,1)
 ax[0].plot(t, e_phot_tot/ntls, label='n')
@@ -269,48 +318,4 @@ sys.exit()
 
 
 
-# store results
-params = {
-    'method': 'pibs',
-    'N': ntls,
-    'nphot': nphot,
-    'w0': w0,
-    'wc': wc,
-    'Delta': wc- w0,
-    'gamma': gamma,
-    'gamma_phi': gamma_phi, # value that we actually feed into code
-    'gamma_phi_qutip': gamma_phi*4, # gammaphi that is consistent with qutip 
-    'kappa': kappa,
-    'Omega': Omega,
-    'tmax': tmax,
-    'dt': dt,
-    'theta': theta,
-    'chunksize':chunksize,
-    'nsteps': nsteps,
-    'atol':atol,
-    'rtol':rtol,
-    
-    }
-# e_phot_tot = np.sin(1*2*np.pi*t) + np.exp(-1j*2*np.pi*2*t)
-res = {
-    't':t,
-    'e_phot_tot': e_phot_tot,
-    'e_excit_site': e_excit_site, 
-    # 'e_phot_a' : e_phot_a,
-    #'e_phot_n2' : e_phot_n2,
-    #'G2_tau0' : G2,
-    #'g2_tau0': g2
-        }
-data = {
-        'params': params,
-        'results': res,
-        'runtime': runtime}
 
-fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
-fname = f'results/example.pkl'
-# fname = 'results/test_sin.pkl'
-#save results in pickle file
-with open(fname, 'wb') as handle:
-    pickle.dump(data,handle)
-    
-print('Stored in ', fname)
