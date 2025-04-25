@@ -38,8 +38,8 @@ from sr_numerical_solution import solve_sr
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 30#int(sys.argv[1])#number 2LS
-nphot = ntls+1
+ntls = 1#int(sys.argv[1])#number 2LS
+nphot =1
 w0 = 0
 wc = 0#1.0
 Omega =0.4#0.4# 0.5
@@ -68,7 +68,7 @@ nsteps=1000
 
 
 indi = Indices(ntls,nphot, debug=True, save = False)
-# indi.print_elements()
+indi.print_elements()
 
 # sys.exit()
 
@@ -205,7 +205,7 @@ with open(fname, 'wb') as handle:
     pickle.dump(data,handle)
     
 print('Stored in ', fname)
-sys.exit()
+# sys.exit()
 
 
 # two time correlations: g1
