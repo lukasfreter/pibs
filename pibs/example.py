@@ -38,15 +38,15 @@ from sr_numerical_solution import solve_sr
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 15#int(sys.argv[1])#number 2LS
+ntls = 5#int(sys.argv[1])#number 2LS
 nphot =ntls+1
 w0 = 1.0
 wc = 1.0
-Omega =0.01#0.4# 0.5
+Omega =0.1#0.4# 0.5
 g = Omega / np.sqrt(ntls)
-kappa = 0.001
-gamma = 1e-04
-gamma_phi=3e-04
+kappa = 0.0
+gamma = 0.0
+gamma_phi=0.0
 gamma_phi_qutip = 4*gamma_phi
 gamma_collective = 0.0
 
@@ -58,8 +58,11 @@ rates = {'H_n': wc,
          'sigmam': gamma,
          'sigmam_collective':gamma_collective}
 
-dt = 0.4 # timestep
-tmax = 800 # for optimum usage of chunks in parallel evolution
+rates = {'ad_sigmam': 0.01,
+         'H_g':g}
+
+dt = 0.2 # timestep
+tmax = 200 # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-12
@@ -111,7 +114,7 @@ scale = 1e3
 rho = Rho(rho_phot, rho_spin, indi, max_nrs=1) # initial condition with zero photons and all spins up.# sys.exit()
 
 
-L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=True, debug=False,save=False, num_cpus=None)
+L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=True,save=False, num_cpus=None)
 # sys.exit()
 # L.setup_L_generic(rates=rates, progress=True)
 
@@ -130,8 +133,9 @@ L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=True, debu
 # sys.exit()
 
 # sys.exit()
-L.setup_L_Tavis_Cummings(progress=False)
-
+# L.setup_L_Tavis_Cummings(progress=False)
+L.setup_L_generic(rates)
+# sys.exit()
 
 # Operators for time evolution
 adag = tensor(create(nphot), qeye(2))

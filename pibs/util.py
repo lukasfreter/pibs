@@ -214,9 +214,9 @@ def degeneracy_gamma_collective_changing_block(outer1, outer2, inner1, inner2):
         if sum(array(p) != Oc) <= 2:    # if the permuted Ic disagrees with Oc for maximum 2 indices, the permutation contributes (see PIBS notes)
             deg+=1
             
-    print(Oc)
-    print(Ic)
-    print('diff', Oc-Ic, ', deg:', deg)
+    # print(Oc)
+    # print(Ic)
+    # print('diff', Oc-Ic, ', deg:', deg)
 
     return deg
     
