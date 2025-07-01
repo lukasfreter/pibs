@@ -41,12 +41,12 @@ t0 = time()
 ntls = 15#int(sys.argv[1])#number 2LS
 nphot =ntls+1
 w0 = 1.0
-wc = 0.65#1.0
-Omega =0.4#0.4# 0.5
+wc = 1.0
+Omega =0.01#0.4# 0.5
 g = Omega / np.sqrt(ntls)
-kappa = 0.01
-gamma = 1e-03
-gamma_phi=3e-02
+kappa = 0.001
+gamma = 1e-04
+gamma_phi=3e-04
 gamma_phi_qutip = 4*gamma_phi
 gamma_collective = 0.0
 
@@ -58,8 +58,8 @@ rates = {'H_n': wc,
          'sigmam': gamma,
          'sigmam_collective':gamma_collective}
 
-dt = 0.2 # timestep
-tmax = 200 # for optimum usage of chunks in parallel evolution
+dt = 0.4 # timestep
+tmax = 800 # for optimum usage of chunks in parallel evolution
 chunksize=200  # time chunks for parallel evolution
 
 atol=1e-12
