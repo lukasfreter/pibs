@@ -28,24 +28,24 @@ sys.path.insert(1, '../../../codes/thisandthat/')
 from sr_numerical_solution import solve_sr
 
 
-# plt.rcParams.update({'font.size': 12,
-#                       'xtick.labelsize' : 12,
-#                       'ytick.labelsize' : 12,
-#                       'lines.linewidth' : 1.5,
-#                       'lines.markersize': 5,
-#                       'figure.figsize': (10,6),
-#                       'figure.dpi': 150})
+plt.rcParams.update({'font.size': 12,
+                      'xtick.labelsize' : 12,
+                      'ytick.labelsize' : 12,
+                      'lines.linewidth' : 1.5,
+                      'lines.markersize': 5,
+                      'figure.figsize': (10,6),
+                      'figure.dpi': 150})
 
 t0 = time()
 # same parameters as in Peter Kirton's code.
-ntls = 5#int(sys.argv[1])#number 2LS
+ntls = 10#int(sys.argv[1])#number 2LS
 nphot =ntls+1
 w0 = 1.0
 wc = 1.0
 Omega =0.1#0.4# 0.5
 g = Omega / np.sqrt(ntls)
-kappa = 0.0
-gamma = 0.0
+kappa = 0.01
+gamma = 0.001
 gamma_phi=0.0
 gamma_phi_qutip = 4*gamma_phi
 gamma_collective = 0.0
@@ -133,8 +133,8 @@ L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, deb
 # sys.exit()
 
 # sys.exit()
-# L.setup_L_Tavis_Cummings(progress=False)
-L.setup_L_generic(rates)
+L.setup_L_Tavis_Cummings(progress=False)
+# L.setup_L_generic(rates)
 # sys.exit()
 
 # Operators for time evolution
@@ -145,7 +145,7 @@ a = destroy(nphot)
 n = adag*a
 n2 = adag*a*adag*a
 p = tensor(qeye(nphot), sigmap()*sigmam())
-ops = [n,p] # operators to calculate expectations for
+ops = [n,p,n2] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
 evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=False)
@@ -153,7 +153,7 @@ evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
-# e_phot_n2 = evolve.result.expect[2].real
+e_phot_n2 = evolve.result.expect[2].real
 #expect_per_nu_phot = np.squeeze(evolve.result.expect_per_nu[:,0,:])
 t = evolve.result.t
 
@@ -164,6 +164,11 @@ t = evolve.result.t
 runtime = time() - t0
 print(f'Elapsed: {runtime:.2f}')
 
+
+fig, ax = plt.subplots()
+ax.plot(t, e_phot_tot/ntls)
+plt.show()
+sys.exit()
 
 # store results
 params = {
@@ -193,7 +198,7 @@ res = {
     'e_phot_tot': e_phot_tot,
     'e_excit_site': e_excit_site, 
     # 'e_phot_a' : e_phot_a,
-    # 'e_phot_n2' : e_phot_n2,
+    'e_phot_n2' : e_phot_n2,
     #'G2_tau0' : G2,
     #'g2_tau0': g2
         }
@@ -203,7 +208,7 @@ data = {
         'runtime': runtime}
 
 fname = f'results/{params["method"]}_N{ntls}_Delta{params["Delta"]}_Omega{Omega}_kappa{kappa}_gamma{gamma}_gammaphi{gamma_phi}_tmax{tmax}_theta{theta}_atol{atol}_rtol{rtol}.pkl'
-fname = f'results/example.pkl'
+# fname = f'results/example.pkl'
 # fname = 'results/test_sin.pkl'
 #save results in pickle file
 with open(fname, 'wb') as handle:
