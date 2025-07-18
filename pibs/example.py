@@ -40,13 +40,13 @@ t0 = time()
 # same parameters as in Peter Kirton's code.
 ntls = 10#int(sys.argv[1])#number 2LS
 nphot =ntls+1
-w0 = 1.0
-wc = 1.0
-Omega =0.1#0.4# 0.5
+w0 = 0.35
+wc = 0.0
+Omega =0.4#0.4# 0.5
 g = Omega / np.sqrt(ntls)
 kappa = 0.01
 gamma = 0.001
-gamma_phi=0.0
+gamma_phi=0.0075
 gamma_phi_qutip = 4*gamma_phi
 gamma_collective = 0.0
 
@@ -77,7 +77,7 @@ indi = Indices(ntls,nphot, debug=True, save = False)
 
 
 # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
-theta = 0.0
+theta = 0.25*np.pi
 rot_x = np.array([[np.cos(theta/2), -1j*np.sin(theta/2)],[-1j*np.sin(theta/2), np.cos(theta/2)]])
 rot_x_dag = np.array([[np.cos(theta/2), 1j*np.sin(theta/2)],[1j*np.sin(theta/2), np.cos(theta/2)]])
 
@@ -114,7 +114,7 @@ scale = 1e3
 rho = Rho(rho_phot, rho_spin, indi, max_nrs=1) # initial condition with zero photons and all spins up.# sys.exit()
 
 
-L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=True,save=False, num_cpus=None)
+L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=False,save=False, num_cpus=None)
 # sys.exit()
 # L.setup_L_generic(rates=rates, progress=True)
 
@@ -148,8 +148,8 @@ p = tensor(qeye(nphot), sigmap()*sigmam())
 ops = [n,p,n2] # operators to calculate expectations for
 
 evolve = TimeEvolve(rho, L, tmax, dt, atol=atol, rtol=rtol, nsteps=nsteps)
-evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=False)
-# evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
+# evolve.time_evolve_block_interp(ops, progress = True, expect_per_nu=False, start_block=None, save_states=False)
+evolve.time_evolve_chunk_parallel2(ops, chunksize=chunksize, progress=True, num_cpus=None)
 
 e_phot_tot = evolve.result.expect[0].real
 e_excit_site = evolve.result.expect[1].real
@@ -168,7 +168,7 @@ print(f'Elapsed: {runtime:.2f}')
 fig, ax = plt.subplots()
 ax.plot(t, e_phot_tot/ntls)
 plt.show()
-sys.exit()
+# sys.exit()
 
 # store results
 params = {
