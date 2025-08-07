@@ -3,8 +3,7 @@ import numpy as np
 from itertools import product
 from multiprocessing import Pool
 
-from util import export, timeit, tensor, qeye, destroy, create, sigmap, sigmam, basis
-from util import sigmaz, degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient,degeneracy_gamma_collective_changing_block_efficient
+from util import degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
 from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
 from util import _multinominal
 from util import Progress
@@ -342,7 +341,6 @@ class Indices:
         
     def print_elements(self, numax=None):
         """ Print elements in each block """
-        from pprint import pprint
         if numax is None:
             numax = len(self.mapping_block)
         for nu in range(numax):
@@ -370,25 +368,17 @@ class Indices:
         sizeL1 = [len(self.mapping_block[nu]) * len(self.mapping_block[nu+1]) for nu in range(len(self.mapping_block)-1)]
         sizeL1.append(0)
         sizeL1 = np.array(sizeL1)
-        total_loops = sizeL0 + sizeL1
         
         loops_photon_trick = np.zeros(len(self.mapping_block))
         for nu in range(len(self.mapping_block)):
             count_nu = self.coupled_photon_block[nu]
             for key in count_nu:
                 loops_photon_trick[nu] += len(count_nu[key][0]) + len(count_nu[key][1])
+    
         
-        ratio = loops_photon_trick / total_loops
-        
-        self.L_loops_total = total_loops
-        self.L_loops_photon = loops_photon_trick
-        
-        # print('Number of elements:', [len(block) for block in self.mapping_block])
-        # print('Size L0:', sizeL0)
-        # print('Size L1:', sizeL1)
-        # print('Total loops for L (no photon trick):  ',total_loops)
-        # print('Total loops for L (with photon trick):', loops_photon_trick)
-        # print('With trick / without trick (%): ', ratio)
+        print('Number of elements:', [len(block) for block in self.mapping_block])
+        print('Size L0:', sizeL0)
+        print('Size L1:', sizeL1)
     
                         
 
@@ -634,7 +624,6 @@ class BlockL:
                    # Diagonal parts
 
                    if left_equal and right_equal: 
-                       contributed = True #
                        # L0 part from Hamiltonian
                        s_down_right = sum(right[1:])
                        s_down_left = sum(left[1:])
