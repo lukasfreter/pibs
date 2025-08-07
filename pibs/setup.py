@@ -35,19 +35,38 @@ class Indices:
     according to the total excitation number nu
     [can we get rid of compressed form entirely?]
     """
-    def __init__(self, nspins, nphot=None,spin_dim=None, verbose=True, debug=False, save=True, index_path=None, suppress_output=False, only_numax = False):
-        """ 
-            nspins : number of spins
-            nphot : photon space dimension (here always set to nspins+1)
-            spin_dim : dimension of single spin (here always set to 2)
-            verbose : If false, do not print anything to command line
-            debug: Do not load existing file, always calculate new set of indices
-            save : If true, save spin indices for later use
-            index_path : path, where index file is stored
-            only_numax : If true, calculate indices only for block with maximum excitation numbers. 
-                        This is interesting when solving a system with no losses, then we stay in the block 
-                        determined by initial conditions (which for sf initial conditions is nu_max)
-            """
+    def __init__(self, nspins, nphot=None,spin_dim=2, verbose=True, debug=False,\
+                 save=False, index_path=None, only_numax = False):
+        """
+
+        Parameters
+        ----------
+        nspins : int
+            Number of two-level systems
+        nphot : int, optional
+            Photon space dimension. If None, nphot=nspins+1
+        spin_dim : int, optional
+            Dimension of spin space. The default is 2 (only implemented value)
+        verbose : bool, optional
+            Print status messages. The default is True.
+        debug : bool, optional
+            If True, do not load existing file, always calculate new set of indices. The default is False.
+        save : bool, optional
+            If True, save spin indices for later use. The default is False.
+        index_path : string, optional
+            Save path for index file. The default is None.
+        only_numax : bool, optional
+            If true, calculate indices only for block with maximum excitation numbers. 
+            This is interesting when solving a system with no losses, then we stay in the block 
+            determined by initial conditions (which for sf initial conditions is nu_max). The default is False.
+
+
+        Returns
+        -------
+        None.
+
+        """
+        
         # make some checks for validity of nspins, nphot, spin_dim
         if (not isinstance(nspins, (int, np.integer))) or nspins <= 0:
             raise ValueError("Number of spins must be integer N > 0")
@@ -417,7 +436,36 @@ class BlockL:
         parallel=0
         parallel=1
     """
-    def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True, progress=False, liouv_path=None,verbose=True):
+    def __init__(self, indices, parallel=0,num_cpus=None, debug=False, save=True,\
+                 progress=False, liouv_path=None,verbose=True):
+        """
+        
+
+        Parameters
+        ----------
+        indices : setup.Indices
+            Indices object
+        parallel : int, optional
+            Liouvillian construction:
+                0: serial, 1: parallel. The default is 0.
+        num_cpus : int, optional
+            Number of CPUs. The default is None.
+        debug : bool, optional
+            If True, do not load existing file, always calculate Liouvillian from scratch. The default is False.
+        save : bool, optional
+            If True, save Liouvillian for later use. The default is True.
+        progress : bool, optional
+            Progress bar. The default is False.
+        liouv_path : string, optional
+            Save path for Liouvillian files. The default is None.
+        verbose : bool, optional
+            Print status messages. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
         
         if indices.only_numax:
             if parallel > 1:
@@ -1100,6 +1148,47 @@ class Models(BlockL):
     
     """
     def __init__(self,wc,w0,g, kappa, gamma_phi, gamma, indices, parallel=0,progress=False, debug=False, save=True, num_cpus=None, liouv_path=None, verbose=True):
+        """
+        
+
+        Parameters
+        ----------
+        wc : float
+            Cavity frequency
+        w0 : float
+            Two-level system level splitting
+        g : float
+            Light-matter coupling
+        kappa : float
+            Cavity loss rate
+        gamma_phi : float
+            Molecular dephasing rate
+        gamma : float
+            Molecular loss rate
+        indices : setup.Indices
+            Indices object
+        parallel : int, optional
+            Liouvillian construction:
+                0: serial, 1: parallel. The default is 0.
+        num_cpus : int, optional
+            Number of CPUs. The default is None.
+        debug : bool, optional
+            If True, do not load existing file, always calculate Liouvillian from scratch. The default is False.
+        save : bool, optional
+            If True, save Liouvillian for later use. The default is True.
+        progress : bool, optional
+            Progress bar. The default is False.
+        liouv_path : string, optional
+            Save path for Liouvillian files. The default is None.
+        verbose : bool, optional
+            Print status messages. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
+        
         # specify rates according to what part of Hamiltonian or collapse operators
         # they scale
         
@@ -1301,10 +1390,30 @@ class Rho:
     """
         
     def __init__(self, rho_p, rho_s, indices, max_nrs=1, scale_rho=1.0, verbose=True):
-        """ rho_p and rho_s are the density matrices of the photon and the single spin space respectively.
-        max_nrs determines the number of spins in the reduced density matrix
-        scale_rho is a scaling factor of the whole density matrix
         """
+        
+
+        Parameters
+        ----------
+        rho_p : scipy.sparse.csr_matrix
+            Density matrix of photons
+        rho_s : scipy.sparse.csr_matrix
+            2x2 density matrix of a single spin
+        indices : setup.Indices
+            Indices object
+        max_nrs : int, optional
+            Maximum number of spins contained in the reduced density matrix. The default is 1.
+        scale_rho : float, optional
+            Scaling factor of the density matrix. Only for numerical stability. The default is 1.0.
+        verbose : bool, optional
+            Print status messages. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
+    
         assert type(max_nrs) == int, "Argument 'max_nrs' must be int"
         assert max_nrs >= 0, "Argument 'max_nrs' must be non-negative"
         assert indices.nspins >= max_nrs, "Number of spins in reduced density matrix "\
