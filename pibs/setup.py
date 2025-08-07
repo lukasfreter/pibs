@@ -581,9 +581,7 @@ class BlockL:
        #------------------------------------------------------
        
        # loop through all elements in block structure
-       counts_continued = [0 for nu in range(num_blocks)]
-       counts_total = [0 for nu in range(num_blocks)]
-       
+
        if indices.only_numax:
            nu_min = num_blocks -1  # num_blocks = nu_max + 1
        else:
@@ -620,9 +618,6 @@ class BlockL:
                coupled_counts_nu = indices.coupled_photon_block[nu_element][photon_tuple][0]
                # print('WARNING: Serial L construction does not use photon count trick to calculate L[ad*sigmam]')
                for count_out in coupled_counts_nu:
-
-                   counts_total[nu_element] += 1
-                   contributed = False # keep track if element has coupled to any other element. for counting only,not physically relevant
                    
                    # get "to couple" element, that contributes to time derivative of "element"
                    element_to_couple = indices.elements_block[nu_element][count_out]
@@ -633,10 +628,8 @@ class BlockL:
                    # get Liouvillian elements
                    #-----------------------------
                    
- 
                    right_equal = (right_to_couple == right).all()
                    left_equal = (left_to_couple == left).all()      
-
 
                    # Diagonal parts
 
@@ -684,16 +677,9 @@ class BlockL:
                             left_spin_sum_diff = sum(left[1:])-sum(left_to_couple[1:])
                             if left_photon_diff == 1 and left_spin_sum_diff == 1: # need matrix element of adag*sigmam
                                 self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]))
-                                contributed = True
                             elif left_photon_diff == -1 and left_spin_sum_diff == -1 : # need matrix element of a*sigmap
                                 self.new_entry(L0_new, 'H_g', count_in, count_out, - 1j*deg * np.sqrt(left[0]+1))
-                                contributed = True
                         
-
-                        else:
-                            counts_continued[nu_element] += 1
-
-
                                
                    elif(states_compatible(left, left_to_couple)):            
                         # if they are compatible, permute right_to_couple appropriately for proper H element
@@ -711,19 +697,12 @@ class BlockL:
                             right_spin_sum_diff = sum(right[1:])-sum(right_to_couple[1:])
                             if right_photon_diff == 1 and right_spin_sum_diff == 1: # need matrix element of a*sigmap
                                 self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]))
-                                contributed = True
                             elif right_photon_diff == -1 and right_spin_sum_diff == -1: # need matrix element of adag*sigmam
                                 self.new_entry(L0_new, 'H_g', count_in, count_out,  1j*deg * np.sqrt(right[0]+1))
-                                contributed = True
                             
-                        else:
-                            counts_continued[nu_element] += 1
 
                    
-               if not contributed:
-                   counts_continued[nu_element]+=1
-                   
-               if nu_element == num_blocks -1:
+               if nu_element == num_blocks -1: # no L1 part for highest block
                    continue
                 
                # Now get L1 part -> coupling from nu_element to nu_element+1 loop through matrix
@@ -731,8 +710,6 @@ class BlockL:
                # unchanged -> spin decay or photon number decreased by one -> photon decay)
                coupled_counts_nu_plus = indices.coupled_photon_block[nu_element][photon_tuple][1]
                for count_out in coupled_counts_nu_plus:    
-                   counts_total[nu_element] += 1
-                   contributed = False
                    
                    # get "to couple" element
                    element_to_couple = indices.elements_block[nu_element+1][count_out]
@@ -756,7 +733,6 @@ class BlockL:
                            deg = degeneracy_gamma_changing_block_efficient(left[1:], right[1:], left_to_couple[1:], right_to_couple[1:])                
                            self.new_entry(L1_new, 'sigmam', count_in, count_out, deg)
 
-                           contributed = True
                    
                    # L1 part from L[a] -> a * rho* adag
                    # since spins remain the same, first check if spin states match
@@ -764,10 +740,7 @@ class BlockL:
                    # the coupled-to-elements necessarily have one more excitation, which for this case is in the photon state.
                    if (left[1:] == left_to_couple[1:]).all() and (right[1:]==right_to_couple[1:]).all():
                        self.new_entry(L1_new, 'a', count_in, count_out,  np.sqrt((left[0]+1)*(right[0] + 1)))
-                       contributed = True
              
-               if not contributed:
-                    counts_continued[nu_element]+=1
             
            # append new blocks to the basis as sparse matrices (CSR format)
            for name in self.L0_basis:
@@ -780,13 +753,6 @@ class BlockL:
                    Lnew = L1_new[name]
                    data, coords, shape = Lnew['data'], Lnew['coords'], Lnew['shape']
                    self.L1_basis[name].append(sp.coo_matrix((data,coords), shape=shape).tocsr())
-       
-       counts_total=np.array(counts_total)
-       counts_continued = np.array(counts_continued)
-       self.L_loops_photon = counts_total
-       self.L_loops_spin = counts_total - counts_continued
-       print('Continued:',counts_continued)
-       print('Total (with photon trick):',counts_total)
        
     
                 
