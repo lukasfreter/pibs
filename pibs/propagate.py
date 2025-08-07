@@ -21,7 +21,7 @@ class TimeEvolve():
     """ Class to handle time evolution of the quantum system. There are two
     main methods to solve the time evolution:
         
-    time_evolve_block:
+    time_evolve_block_interp:
         This method solves the block structure block for block sequentially.
         Meaning, starting with the block of highest excitation number nu_max, we solve
         the whole time evolution 
@@ -33,9 +33,8 @@ class TimeEvolve():
         
                 d/dt rho_nu = L0_nu * rho_nu + L1_{nu+1} * rho_{nu+1}
         
-        If all blocks have been solved, we can compute the desired expectation values.
         
-    time_evolve_chunk:
+    time_evolve_chunk_parallel2:
         This method sovles the block structure in a parallel manner. The time
         evolution is segmented into chunks of given number of time steps. In 
         the first time chunk, we solve the system for rho_nu_max. In the second
@@ -47,6 +46,31 @@ class TimeEvolve():
         """
         
     def __init__(self, rho, L, tend, dt, atol=1e-5, rtol=1e-5, nsteps=500):
+        """
+        Initialize
+
+        Parameters
+        ----------
+        rho : setup.Rho
+            Density matrix object
+        L : setup.Models
+            Liouvillian object
+        tend : float
+            Final time for time evolution
+        dt : float
+            Time step
+        atol : float, optional
+            Absolute tolerance for integrator. The default is 1e-5.
+        rtol : float, optional
+            Relative tolerance for integrator. The default is 1e-5.
+        nsteps : int, optional
+            Max iterations for integrator. The default is 500.
+
+        Returns
+        -------
+        None.
+
+        """
         self.tend = tend
         self.dt = dt
         self.atol = atol
@@ -137,17 +161,45 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, save_states=False, num_cpus=None, method='bdf', expect_per_nu=False, start_block=None):
+    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, \
+                        save_states=False, num_cpus=None, method='bdf', expect_per_nu=False, start_block=None\
+                            ,verbose = True):
         """ 
-        GOTO METHOD FOR PARALLEL TIME EVOLUTION
+            Parallel time evolution function
+        
+            Parameters
+            ----------
+            expect_oper : list
+                List of operators for which expectation values are calculated at each time step
+            chunksize : int
+                Number of time steps to calculate serially in one chunk
+            save_states : bool
+                True: save states at all times, False: only save initial and final state
+            progress : bool
+                True: Enable progress bar
+            num_cpus : int
+                Number of CPUs for parallel computation
+            method : string
+                Method for integrator
+                'bdf' : stiff
+                'adams' : non-stiff
+            expect_per_nu : bool
+                True: Calculate the expectation values for each block separately
+            start_block : int
+                specify excitation number corresponding to block at which the time evolution should start.
+                If None, start_block is set to nu_max, which gives exact result.
+            verbose : bool
+                True: print status messages
+            
+            Returns
+            -------
+            None
         
         Parallelize and minimize the amount of stored states. In this function, the synchronization
-        between processes is done 'by hand'. Meaning, similar to the 'time_evolve_chunk' function,
-        we loop through chunks, and for each iteration of the loop, a new parallel pool is being set up
-        that makes use of the results from the previous chunk. To minimize memory usage, only one past chunk
-        is being saved for each nu.
+        between processes is done 'by hand'. Meaning we loop through chunks, and for each iteration 
+        of the loop, a new parallel pool is being set up that makes use of the results from the previous chunk. 
+        To minimize memory usage, only one past chunk is being saved for each nu.
         
-        method: 'bdf' = stiff, 'adams' = non-stiff
         """
         
         if self.indices.only_numax:
@@ -158,8 +210,7 @@ class TimeEvolve():
         #     self.time_evolve_block(save_states=True, progress=progress)
         #     return
        
-        print(f'Starting time evolution in chunks (parallel 2), chunk size {chunksize}...')
-        tstart = time()
+
                
         num_blocks = len(self.indices.mapping_block)
         nu_max = num_blocks-1
@@ -169,21 +220,14 @@ class TimeEvolve():
         # determine start block
         if start_block == None or start_block == nu_max:
             start_block = nu_max
-        else:
-            if self.indices.only_numax:
-                print('Warning: Cannot simultaneously set only_numax evolution and starting time evolution at block not equal to nu_max.')
-                print('Please change "only_numax" parameter in Indices, or change "start_block" in time evolution.')
-                
-                # maybe just make a decision for the user? 50-50 chance that it is correct
-                return
-            
-            if start_block > nu_max or start_block < 0:
-                raise ValueError(f"Start block exciation must be within 0 and {nu_max}.")
-            if not isinstance(start_block, (int, np.integer)):
-                raise ValueError('Start block excitation must be an integer.')
+        if start_block > nu_max or start_block < 0:
+            raise ValueError(f"Start block exciation must be within 0 and {nu_max}.")
+        if not isinstance(start_block, (int, np.integer)):
+            raise ValueError('Start block excitation must be an integer.')
+        if verbose:
             print(f'Start block set to {start_block}/{nu_max}.')
-        
-        
+            print(f'Starting time evolution in chunks (parallel 2), chunk size {chunksize}...')
+        tstart = time()
         
         num_evolutions = int(np.ceil(ntimes/chunksize))+nu_max # number of loops for progress bar
         # some weird edge case, if chunksize divides ntimes
@@ -377,23 +421,38 @@ class TimeEvolve():
         
 
         
-    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, method='bdf', expect_per_nu=False, start_block=None, verbose=True):
-        """ Time evolution of the block structure without resetting the solver at each step.
-        Do so by interpolating feedforward.
+    def time_evolve_block_interp(self,expect_oper=None, save_states=None, progress=False, \
+                        method='bdf', expect_per_nu=False, start_block=None, verbose=True):
+        """ Serial time evolution function
         
-        method: 'bdf' = stiff, 'adams' = non-stiff
-        save_states : True: save states at all times, False: only save initial and final state
-        expect_oper : List of operators for which expectation values are calculated
-        expect_per_nu : If true, calculate the expectation values for each block separately
-        start_block : specify excitation number corresponding to block, at which the time evolution should start.
-                      If None, start_block is set to nu_max, which gives exact result.
-        
+            Parameters
+            ----------
+            expect_oper : list
+                List of operators for which expectation values are calculated at each time step
+            save_states : bool
+                True: save states at all times, False: only save initial and final state
+            progress : bool
+                True: Enable progress bar
+            method : string
+                Method for integrator
+                'bdf' : stiff
+                'adams' : non-stiff
+            expect_per_nu : bool
+                True: Calculate the expectation values for each block separately
+            start_block : int
+                specify excitation number corresponding to block at which the time evolution should start.
+                If None, start_block is set to nu_max, which gives exact result.
+            verbose : bool
+                True: print status messages
+            
+            Returns
+            -------
+            None
+            
         
         """      
         
-        if verbose:
-            print('Starting time evolution serial block (interpolation)...')
-        tstart = time()
+
                
         # store number of elements in each block
         num_blocks = len(self.indices.mapping_block)
@@ -407,18 +466,21 @@ class TimeEvolve():
             start_block = nu_max
         else:
             if self.indices.only_numax:
-                print('Warning: Cannot simultaneously set only_numax evolution and starting time evolution at block not equal to nu_max.')
-                print('Please change "only_numax" parameter in Indices, or change "start_block" in time evolution.')
+                print('Warning: Cannot simultaneously set "only_numax" evolution and starting time evolution at block not equal to nu_max.')
+                print('Setting "start_block" to nu_max = {nu_max}')
+                start_block = nu_max    
                 
-                # maybe just make a decision for the user? 50-50 chance that it is correct
-                return
             
             if start_block > nu_max or start_block < 0:
                 raise ValueError(f"Start block exciation must be within 0 and {nu_max}.")
             if not isinstance(start_block, (int, np.integer)):
                 raise ValueError('Start block excitation must be an integer.')
-            print(f'Start block set to {start_block}/{nu_max}.')
+            if verbose:
+                print(f'Start block set to {start_block}/{nu_max}.')
             
+        if verbose:
+            print('Starting time evolution serial block (interpolation)...')
+        tstart = time()
         
         if progress:
             if self.indices.only_numax:
@@ -431,7 +493,7 @@ class TimeEvolve():
             save_states = True if expect_oper is None else False
         if not save_states and expect_oper is None:
             print('Warning: Not recording states or any observables. Only initial and final'\
-                    ' compressed state will be returned.')
+                    ' states will be returned.')
                 
 
         # set up results:
@@ -601,12 +663,12 @@ class TimeEvolve():
     
     
 def _intfunc(t, y, L):
-    # return (L.dot(y))
+    """ Integration funciton for block nu_max"""
     return (L@y)
    
 
 def _intfunc_block_interp(t,y,L0,L1,y1_func):
-    """ Same as _intfunc_block, but where y1 is given as a function of time"""
+    """ Integration function for blocks nu < nu_max with coupling L1 to higher blocks"""
     # return (L0.dot(y) + L1.dot(y1_func(t)))
     return (L0 @ y + L1 @ y1_func(t))
 
