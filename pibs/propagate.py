@@ -161,7 +161,7 @@ class TimeEvolve():
   
         
   
-    def time_evolve_chunk_parallel2(self, expect_oper, chunksize = 50, progress=False, \
+    def time_evolve_chunk_parallel(self, expect_oper, chunksize = 50, progress=False, \
                         save_states=False, num_cpus=None, method='bdf', expect_per_nu=False, start_block=None\
                             ,verbose = True):
         """ 
