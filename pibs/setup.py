@@ -100,6 +100,9 @@ class Indices:
         # loading/saving paths
         if index_path is None:
             index_path = 'data/indices/'
+        if not os.path.isdir(index_path):
+            os.makedirs(index_path)
+            print('Created directory ', index_path)
         filename = f'indices_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl'
         fname_numax = f'indices_numax_Ntls{self.nspins}_Nphot{self.ldim_p}_spindim{self.ldim_s}.pkl' # for the case only_numax =True
         
