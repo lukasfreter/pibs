@@ -13,7 +13,7 @@ $ python3 -m pip install pibs
 ```
 
 ## Example/Tutorial
-An example for using PIBS is given in `example.py`, and a jupyter-notebook with more detailed explanation in `notebooks/pibs.ipynb`
+An example for using PIBS is given in `tutorials/example.py`, and a jupyter-notebook with more detailed explanation in `tutorials/pibs_example.ipynb`
 
 
 - **[1]** L. Freter, P. Fowler-Wright, J. Cuerda, B. W. Lovett, J. Keeling, and P. Törmä, ‘Theory of dynamical superradiance in organic materials’, arXiv: arXiv:2509.03067 (https://doi.org/10.48550/arXiv.2509.03067) (2025)  
