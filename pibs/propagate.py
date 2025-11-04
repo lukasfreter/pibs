@@ -100,6 +100,7 @@ class TimeEvolve():
         """
         tstart = time()
         rho0, rhoff_func, t0, nu, chunksize, store_initial, rtol, atol, method = args_tuple
+        global t
         dt = t[1]-t[0]
         
         if rhoff_func is None: # no feedforward -> block nu_max
@@ -674,11 +675,3 @@ def _intfunc_block_interp(t,y,L0,L1,y1_func):
 
 
 
-if __name__ =='__main__':
-    # testing
-    from setup import Indices, Rho
-    ntls = 7
-    nphot = ntls+1
-    indi = Indices(ntls)
-    rho = Rho(basis(nphot,0), basis(2,0), indi) # initial condition with zero photons and all spins up.
-    t = TimeEvolve(rho, 1, indi,1,1)
