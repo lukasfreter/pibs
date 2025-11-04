@@ -3,10 +3,10 @@ import numpy as np
 from itertools import product
 from multiprocessing import Pool
 
-from util import degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
-from util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
-from util import _multinominal
-from util import Progress
+from .util import degeneracy_spin_gamma, degeneracy_gamma_changing_block_efficient
+from .util import states_compatible, permute_compatible, degeneracy_outer_invariant_optimized
+from .util import _multinominal
+from .util import Progress
 
 import os
 import pickle

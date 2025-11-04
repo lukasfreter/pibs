@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import numpy as np
 from time import time
-from util import  basis, vector_to_operator, expect, Progress
+from .util import  basis, vector_to_operator, expect, Progress
 #from pibs.util import tensor, qeye, destroy, create, sigmap, sigmam, basis, sigmaz, vector_to_operator, expect
 
 from scipy.integrate import ode
