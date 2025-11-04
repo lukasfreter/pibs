@@ -7,16 +7,10 @@ Standard example for calculating time evolution with pibs code.
 
 import numpy as np
 import os
-# os.environ['OPENBLAS_NUM_THREADS'] = '1' 
 from pibs import Indices, Rho, Models
 from pibs import TimeEvolve
 from pibs import qeye, create, destroy, sigmam, sigmap, tensor, basis
 import sys
-# sys.path.insert(0, '../pibs/')
-# from setup import Indices, Rho, Models
-# from propagate import TimeEvolve
-# from util import qeye, create, destroy, sigmam, sigmap, tensor, basis
-
 import matplotlib.pyplot as plt
 import scipy.sparse as sp
 
@@ -42,7 +36,7 @@ if __name__ == '__main__':
     nsteps=1000
     
     # Setup indices mapping
-    indi = Indices(ntls,nphot, debug=True, save =True)
+    indi = Indices(ntls,nphot, debug=False, save =True)
     
     # rotation matrix around x-axis of spin 1/2 : exp(-i*theta*Sx)=exp(-i*theta/2*sigmax) = cos(theta/2)-i*sin(theta/2)*sigmax
     theta = 0.25*np.pi
@@ -55,7 +49,7 @@ if __name__ == '__main__':
     rho = Rho(rho_phot, rho_spin, indi, max_nrs=1) # Setup density matrix
     
     # Setup Liouvillian
-    L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=True,save=True, num_cpus=None)
+    L = Models(wc, w0,g, kappa, gamma_phi,gamma,indi, parallel=0,progress=False, debug=False,save=True, num_cpus=None)
     L.setup_L_Tavis_Cummings(progress=False)
     
     # Operators for time evolution

@@ -100,7 +100,6 @@ class TimeEvolve():
         """
         tstart = time()
         rho0, rhoff_func, t0, nu, chunksize, store_initial, rtol, atol, method = args_tuple
-        global t
         dt = t[1]-t[0]
         
         if rhoff_func is None: # no feedforward -> block nu_max

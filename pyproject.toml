@@ -1,6 +1,6 @@
 [project]
 name = "pibs"
-version = "0.0.7"
+version = "0.0.10"
 authors = [
   { name="Lukas Freter", email="lukas.freter@aalto.fi" },
   { name="Piper Fowler-Wright", email="piperfw@gmail.com" },
