@@ -1,0 +1,30 @@
+[project]
+name = "pibs"
+version = "0.0.1"
+authors = [
+  { name="Lukas Freter", email="lukas.freter@aalto.fi" },
+  { name="Piper Fowler-Wright", email="piperfw@gmail.com" },
+]
+description = "PIBS: Permutational Invariance Block Solver implements a numerically exact method for solving the dissipative Tavis-Cummings model with local losses"
+
+readme = "README.md"
+dependencies = [
+  "numpy",
+  "scipy"
+]
+classifiers = [
+    "Programming Language :: Python",
+	"Topic :: Scientific/Engineering :: Physics",
+	"License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["physics", "open-quantum-system", "computational-physics", "cavity-qed", "superradiance"]
+requires-python = ">=3.10"
+
+[project.urls]
+Homepage = "https://github.com/lukasfreter/pibs/tree/main"
+
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
