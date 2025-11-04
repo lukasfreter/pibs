@@ -1,7 +1,20 @@
-# Permutational Invariance Block Solver
+# PIBS: Permutational Invariance Block Solver
 
-Code for calculating the dynamics of the dissipative Tavis-Cummings model with local incoherent processes (no gain!). An example is given in example.py.
 
-In the file setup.py, the supercompressed block form of the Liouvillian and the density matrix is calculated. 
+This python package implements an efficient, numerically exact method for solving the dynamics of the dissipative Tavis-Cummings model with local loss and dephasing processes (no gain!). The method exploits the weak permutation symmetry and theweak U(1) symmetry of the Lindblad master equation.
 
-propagate.py contains the functionality of serial and parallel time evolution.
+This code has been used in the publication [1].
+
+
+## Installation
+PIBS can be installed using pip:
+```
+$ python3 -m pip install pibs
+```
+
+## Example/Tutorial
+An example for using PIBS is given in `example.py`, and a jupyter-notebook with more detailed explanation in `notebooks/pibs.ipynb`
+
+
+- **[1]** L. Freter, P. Fowler-Wright, J. Cuerda, B. W. Lovett, J. Keeling, and P. Törmä, ‘Theory of dynamical superradiance in organic materials’, arXiv: arXiv:2509.03067 (https://doi.org/10.48550/arXiv.2509.03067) (2025)  
+

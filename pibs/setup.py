@@ -498,6 +498,7 @@ class BlockL:
             liouv_path = 'data/liouvillians/'
         if not os.path.exists(liouv_path):
             os.makedirs(liouv_path)
+            print('Created directory ', liouv_path)
             
         filename = f'liouvillian_TC_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
         fname_numax = f'liouvillian_TC_numax_Ntls{indices.nspins}_Nphot{indices.ldim_p}_spindim{indices.ldim_s}.pkl'
