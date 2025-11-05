@@ -1,7 +1,7 @@
 # PIBS: Permutational Invariance Block Solver
 
 
-This python package implements an efficient, numerically exact method for solving the dynamics of the dissipative Tavis-Cummings model with local loss and dephasing processes (no gain!). The method exploits the weak permutation symmetry and theweak U(1) symmetry of the Lindblad master equation.
+This python package implements an efficient, numerically exact method for solving the dynamics of the dissipative Tavis-Cummings model with local loss and dephasing processes (no gain!). The method exploits the weak permutation symmetry and the weak U(1) symmetry of the Lindblad master equation.
 
 This code has been used in the publication [1].
 
