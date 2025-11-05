@@ -1,6 +1,6 @@
 [project]
 name = "pibs"
-version = "0.0.10"
+version = "0.0.13"
 authors = [
   { name="Lukas Freter", email="lukas.freter@aalto.fi" },
   { name="Piper Fowler-Wright", email="piperfw@gmail.com" },
@@ -20,7 +20,7 @@ classifiers = [
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 keywords = ["physics", "open-quantum-system", "computational-physics", "cavity-qed", "superradiance"]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 
 [project.urls]
 Homepage = "https://github.com/lukasfreter/pibs/tree/main"
